@@ -446,54 +446,49 @@
 
   async function loadOffices(){
 
-    const list =
-      document.getElementById("officeList");
+  const list = document.getElementById("officeList");
 
-    list.innerHTML = "Loading...";
+  list.innerHTML = "Loading...";
 
-    const { data: memberships, error } =
-      await supabaseClient
-        .from("office_members")
-        .select("office_id, role, offices(*)");
+  const { data, error } =
+    await supabaseClient.rpc("get_my_offices");
 
-    if(error){
-      list.innerHTML =
-        "❌ " + escapeHtml(error.message);
-      return;
-    }
+  if(error){
+    list.innerHTML =
+      "❌ " + escapeHtml(error.message);
+    return;
+  }
 
-    if(!memberships || memberships.length === 0){
-      list.innerHTML =
-        "এতিয়াও কোনো Office-ত Join কৰা হোৱা নাই।";
-      return;
-    }
+  if(!data || data.length === 0){
+    list.innerHTML =
+      "এতিয়াও কোনো Office-ত Join কৰা হোৱা নাই।";
+    return;
+  }
 
-    list.innerHTML = "";
+  list.innerHTML = "";
 
-    memberships.forEach(item => {
+  data.forEach(office => {
 
-      const office = item.offices;
+    const div = document.createElement("div");
 
-      if(!office) return;
+    div.className = "member";
 
-      const div =
-        document.createElement("div");
+    div.innerHTML = `
+      <b>🏢 ${escapeHtml(office.office_name)}</b><br>
 
-      div.className = "member";
+      <span class="small">
+        Role: ${escapeHtml(office.role)}
+      </span>
 
-      div.innerHTML = `
-        <b>🏢 ${escapeHtml(office.name)}</b><br>
-        <span class="small">
-          Role: ${escapeHtml(item.role)}
-        </span>
-        <br><br>
-        <div class="code">
-          ${escapeHtml(office.link_code)}
-        </div>
-      `;
+      <br><br>
 
-      list.appendChild(div);
-    });
+      <div class="code">
+        ${escapeHtml(office.link_code)}
+      </div>
+    `;
+
+    list.appendChild(div);
+  });
   }
 
 
