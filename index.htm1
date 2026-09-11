@@ -87,6 +87,7 @@ let localStream=null;
 let localAudioTrack=null;
 let peers=new Map();
 let candidateQueues=new Map();
+let helloTimer=null;
 
 function setStatus(id,message){
   const el=document.getElementById(id);
@@ -209,6 +210,8 @@ async function connectVoice(){
         btn.classList.add("hidden");
         document.getElementById("pttBtn").classList.remove("hidden");
         await sendSignal("hello",{from:currentUser.id});
+        clearInterval(helloTimer);
+        helloTimer=setInterval(()=>sendSignal("hello",{from:currentUser.id}),3000);
       }else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
         setVoiceState("❌ Voice channel connection failed");
         btn.disabled=false; btn.textContent="🎙️ Voice পুনৰ চালু কৰক";
@@ -329,6 +332,8 @@ const ptt=document.getElementById("pttBtn");
 ptt.addEventListener("contextmenu",e=>e.preventDefault());
 
 async function disconnectVoice(){
+  clearInterval(helloTimer);
+  helloTimer=null;
   if(voiceChannel){
     try{await sendSignal("bye",{from:currentUser?.id});}catch(e){}
     try{await supabaseClient.removeChannel(voiceChannel);}catch(e){}
