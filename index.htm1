@@ -182,11 +182,12 @@ function selectOffice(office){
   selectedOffice=office;
   document.getElementById("voiceCard").classList.remove("hidden");
   document.getElementById("selectedOffice").textContent="Selected: "+office.office_name;
+  document.getElementById("pttBtn").classList.remove("hidden");
 }
 
 async function connectVoice(){
-  if(!selectedOffice){setStatus("voiceStatus","❌ প্ৰথমে এটা Office বাছক।");return;}
-  if(voiceChannel){return;}
+  if(!selectedOffice){setStatus("voiceStatus","❌ প্ৰথমে এটা Office বাছক।");return false;}
+  if(voiceChannel && localAudioTrack){return true;}
   const btn=document.getElementById("connectVoiceBtn");
   btn.disabled=true; btn.textContent="🎙️ Voice আৰম্ভ...";
   try{
@@ -217,9 +218,11 @@ async function connectVoice(){
         btn.disabled=false; btn.textContent="🎙️ Voice পুনৰ চালু কৰক";
       }
     });
+    return true;
   }catch(e){
     btn.disabled=false; btn.textContent="🎙️ Voice চালু কৰক";
     setVoiceState("❌ Microphone permission/connection সমস্যা: "+escapeHtml(e.message));
+    return false;
   }
 }
 
@@ -310,25 +313,51 @@ function removePeer(remoteId){
   peers.delete(remoteId); candidateQueues.delete(remoteId);
 }
 
-function startTalking(e){
+let pttHeld=false;
+let pttStarting=false;
+
+async function startTalking(e){
   if(e) e.preventDefault();
-  if(!localAudioTrack)return;
-  localAudioTrack.enabled=true;
+  pttHeld=true;
   const b=document.getElementById("pttBtn");
-  b.classList.add("talking"); b.innerHTML="🔴 TALKING<br>RELEASE";
+
+  // First press can start the microphone/voice connection automatically.
+  if(!localAudioTrack){
+    if(pttStarting)return;
+    pttStarting=true;
+    b.classList.add("talking");
+    b.innerHTML="🟡 CONNECTING...<br>PLEASE HOLD";
+    setVoiceState("🎙️ Voice connecting — microphone permission may appear...");
+    const ok=await connectVoice();
+    pttStarting=false;
+    if(!ok || !localAudioTrack){
+      b.classList.remove("talking");
+      b.innerHTML="PRESS & HOLD<br>TO TALK";
+      pttHeld=false;
+      return;
+    }
+    if(!pttHeld)return;
+  }
+
+  localAudioTrack.enabled=true;
+  b.classList.add("talking");
+  b.innerHTML="🔴 TALKING<br>RELEASE";
   setVoiceState("🔴 আপুনি কথা কৈ আছে...");
 }
+
 function stopTalking(e){
   if(e) e.preventDefault();
+  pttHeld=false;
   if(!localAudioTrack)return;
   localAudioTrack.enabled=false;
   const b=document.getElementById("pttBtn");
-  b.classList.remove("talking"); b.innerHTML="PRESS & HOLD<br>TO TALK";
-  setVoiceState("🟢 Voice connected — PTT ready");
+  b.classList.remove("talking");
+  b.innerHTML="PRESS & HOLD<br>TO TALK";
+  setVoiceState(voiceChannel ? "🟢 Voice connected — PTT ready" : "Voice বন্ধ");
 }
 const ptt=document.getElementById("pttBtn");
-["pointerdown","touchstart"].forEach(ev=>ptt.addEventListener(ev,startTalking,{passive:false}));
-["pointerup","pointercancel","pointerleave","touchend","touchcancel"].forEach(ev=>ptt.addEventListener(ev,stopTalking,{passive:false}));
+ptt.addEventListener("pointerdown",startTalking,{passive:false});
+["pointerup","pointercancel","pointerleave"].forEach(ev=>ptt.addEventListener(ev,stopTalking,{passive:false}));
 ptt.addEventListener("contextmenu",e=>e.preventDefault());
 
 async function disconnectVoice(){
