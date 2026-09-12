@@ -67,6 +67,7 @@ button.ptt.talking{background:#b83232;transform:scale(1.03)}
 <div id="selectedOffice" class="small"></div>
 <div id="voiceStatus" class="status voiceState">Voice বন্ধ</div>
 <button id="connectVoiceBtn" onclick="connectVoice()">🎙️ Voice চালু কৰক</button>
+<button id="listenBtn" class="secondary hidden" onclick="enableSpeaker()">🔊 Voice শুনিবলৈ টিপক</button>
 <button id="pttBtn" class="ptt hidden">PRESS & HOLD<br>TO TALK</button>
 <div class="plan">Free MVP: voice over Internet. Future paid plans can be added through Google Play Billing without changing the basic Office/Join system.</div>
 <audio id="remoteAudio" autoplay playsinline></audio>
@@ -88,6 +89,8 @@ let localAudioTrack=null;
 let peers=new Map();
 let candidateQueues=new Map();
 let helloTimer=null;
+let announcedPeers=new Set();
+let remoteStream=null;
 
 function setStatus(id,message){
   const el=document.getElementById(id);
@@ -247,8 +250,13 @@ function createPeer(remoteId){
   };
   pc.ontrack=e=>{
     const audio=document.getElementById("remoteAudio");
-    audio.srcObject=e.streams[0];
-    audio.play().catch(()=>{});
+    if(!remoteStream) remoteStream=new MediaStream();
+    if(e.track && !remoteStream.getTracks().some(t=>t.id===e.track.id)) remoteStream.addTrack(e.track);
+    audio.srcObject=remoteStream;
+    audio.muted=false; audio.volume=1;
+    const listenBtn=document.getElementById("listenBtn");
+    listenBtn.classList.remove("hidden");
+    audio.play().then(()=>listenBtn.classList.add("hidden")).catch(()=>{});
   };
   pc.onconnectionstatechange=()=>{
     if(["failed","closed"].includes(pc.connectionState)) removePeer(remoteId);
@@ -261,13 +269,14 @@ function createPeer(remoteId){
 async function handleHello(p){
   if(!p||!p.from||p.from===currentUser.id)return;
   if(currentUser.id < p.from){
+    if(announcedPeers.has(p.from)) return;
+    announcedPeers.add(p.from);
     const pc=createPeer(p.from);
+    if(pc.signalingState !== "stable" || pc.localDescription) return;
     const offer=await pc.createOffer();
     await pc.setLocalDescription(offer);
     await sendSignal("offer",{from:currentUser.id,to:p.from,description:pc.localDescription});
-  }else{
-    createPeer(p.from);
-  }
+  }else createPeer(p.from);
 }
 
 async function handleOffer(p){
@@ -304,7 +313,16 @@ async function flushCandidates(remoteId){
 }
 
 function handleBye(p){
-  if(p?.from) removePeer(p.from);
+  if(p?.from){ announcedPeers.delete(p.from); removePeer(p.from); }
+}
+
+function enableSpeaker(){
+  const audio=document.getElementById("remoteAudio");
+  audio.muted=false; audio.volume=1;
+  audio.play().then(()=>{
+    document.getElementById("listenBtn").classList.add("hidden");
+    setVoiceState("🟢 Voice শুনি আছে — PTT ready");
+  }).catch(()=>setVoiceState("❌ Speaker চালু কৰিব পৰা নগ'ল"));
 }
 
 function removePeer(remoteId){
@@ -368,7 +386,10 @@ async function disconnectVoice(){
     try{await supabaseClient.removeChannel(voiceChannel);}catch(e){}
   }
   voiceChannel=null;
-  peers.forEach(pc=>pc.close()); peers.clear(); candidateQueues.clear();
+  peers.forEach(pc=>pc.close()); peers.clear(); candidateQueues.clear(); announcedPeers.clear();
+  remoteStream=null;
+  const listenBtn=document.getElementById("listenBtn");
+  if(listenBtn) listenBtn.classList.add("hidden");
   if(localStream){localStream.getTracks().forEach(t=>t.stop());}
   localStream=null; localAudioTrack=null;
   const btn=document.getElementById("connectVoiceBtn");
