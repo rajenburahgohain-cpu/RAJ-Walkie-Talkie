@@ -189,12 +189,32 @@ function selectOffice(office){
 }
 
 async function connectVoice(){
-  if(!selectedOffice){setStatus("voiceStatus","❌ প্ৰথমে এটা Office বাছক।");return false;}
-  if(voiceChannel && localAudioTrack){return true;}
+  if(!selectedOffice){
+    setVoiceState("❌ প্ৰথমে এটা Office বাছক।");
+    return false;
+  }
+  if(voiceChannel && localStream){
+    return true;
+  }
+
   const btn=document.getElementById("connectVoiceBtn");
-  btn.disabled=true; btn.textContent="🎙️ Voice আৰম্ভ...";
+  btn.disabled=true;
+  btn.textContent="🎙️ Voice আৰম্ভ...";
+
   try{
-    localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error("এই browser-ত microphone access নাই। HTTPS page-ত Chrome ব্যৱহাৰ কৰক।");
+    }
+
+    localStream=await navigator.mediaDevices.getUserMedia({
+      audio:{
+        echoCancellation:true,
+        noiseSuppression:true,
+        autoGainControl:true
+      },
+      video:false
+    });
+
     localAudioTrack=localStream.getAudioTracks()[0];
     localAudioTrack.enabled=false;
 
@@ -213,147 +233,296 @@ async function connectVoice(){
         setVoiceState("🟢 Voice connected — PTT ready");
         btn.classList.add("hidden");
         document.getElementById("pttBtn").classList.remove("hidden");
+
         await sendSignal("hello",{from:currentUser.id});
+
         clearInterval(helloTimer);
-        helloTimer=setInterval(()=>sendSignal("hello",{from:currentUser.id}),3000);
-      }else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
+        helloTimer=setInterval(async ()=>{
+          if(voiceChannel){
+            await sendSignal("hello",{from:currentUser.id});
+          }
+        },2000);
+
+      }else if(status==="CHANNEL_ERROR" || status==="TIMED_OUT"){
         setVoiceState("❌ Voice channel connection failed");
-        btn.disabled=false; btn.textContent="🎙️ Voice পুনৰ চালু কৰক";
+        btn.disabled=false;
+        btn.textContent="🎙️ Voice পুনৰ চালু কৰক";
       }
     });
+
     return true;
   }catch(e){
-    btn.disabled=false; btn.textContent="🎙️ Voice চালু কৰক";
-    setVoiceState("❌ Microphone permission/connection সমস্যা: "+escapeHtml(e.message));
+    btn.disabled=false;
+    btn.textContent="🎙️ Voice চালু কৰক";
+    if(localStream){
+      localStream.getTracks().forEach(t=>t.stop());
+      localStream=null;
+    }
+    localAudioTrack=null;
+    setVoiceState("❌ Microphone সমস্যা: "+escapeHtml(e.message));
     return false;
   }
 }
 
-function setVoiceState(text){document.getElementById("voiceStatus").textContent=text;}
+function setVoiceState(text){
+  document.getElementById("voiceStatus").textContent=text;
+}
 
 async function sendSignal(event,payload){
   if(!voiceChannel)return;
-  await voiceChannel.send({type:"broadcast",event,payload});
+  try{
+    await voiceChannel.send({
+      type:"broadcast",
+      event,
+      payload
+    });
+  }catch(e){}
 }
 
 function createPeer(remoteId){
   if(peers.has(remoteId)) return peers.get(remoteId);
+
   const pc=new RTCPeerConnection({
     iceServers:[
       {urls:"stun:stun.l.google.com:19302"},
       {urls:"stun:stun1.l.google.com:19302"}
     ]
   });
-  if(localAudioTrack) pc.addTrack(localAudioTrack,localStream);
+
+  if(localStream){
+    localStream.getTracks().forEach(track=>{
+      pc.addTrack(track,localStream);
+    });
+  }
+
   pc.onicecandidate=e=>{
-    if(e.candidate) sendSignal("candidate",{from:currentUser.id,to:remoteId,candidate:e.candidate});
+    if(e.candidate){
+      sendSignal("candidate",{
+        from:currentUser.id,
+        to:remoteId,
+        candidate:e.candidate
+      });
+    }
   };
+
   pc.ontrack=e=>{
     const audio=document.getElementById("remoteAudio");
-    if(!remoteStream) remoteStream=new MediaStream();
-    if(e.track && !remoteStream.getTracks().some(t=>t.id===e.track.id)) remoteStream.addTrack(e.track);
+
+    if(!remoteStream){
+      remoteStream=new MediaStream();
+    }
+
+    if(e.track && !remoteStream.getTracks().some(t=>t.id===e.track.id)){
+      remoteStream.addTrack(e.track);
+    }
+
     audio.srcObject=remoteStream;
-    audio.muted=false; audio.volume=1;
-    const listenBtn=document.getElementById("listenBtn");
-    listenBtn.classList.remove("hidden");
-    audio.play().then(()=>listenBtn.classList.add("hidden")).catch(()=>{});
+    audio.autoplay=true;
+    audio.playsInline=true;
+    audio.muted=false;
+    audio.volume=1;
+
+    audio.play().then(()=>{
+      document.getElementById("listenBtn").classList.add("hidden");
+      setVoiceState("🟢 Audio received — PTT ready");
+    }).catch(()=>{
+      document.getElementById("listenBtn").classList.remove("hidden");
+      setVoiceState("🔊 Voice আহিছে — শুনিবলৈ Speaker button টিপক");
+    });
   };
+
+  pc.oniceconnectionstatechange=()=>{
+    const s=pc.iceConnectionState;
+    if(s==="checking"){
+      setVoiceState("🟡 দুটা ফোন connect কৰি থকা হৈছে...");
+    }else if(s==="connected" || s==="completed"){
+      setVoiceState("🟢 Phone-to-phone audio connected");
+    }else if(s==="failed"){
+      setVoiceState("❌ Phone-to-phone connection failed — TURN server লাগিব পাৰে");
+      removePeer(remoteId);
+    }
+  };
+
   pc.onconnectionstatechange=()=>{
-    if(["failed","closed"].includes(pc.connectionState)) removePeer(remoteId);
+    const s=pc.connectionState;
+    if(s==="connected"){
+      setVoiceState("🟢 Phone-to-phone audio connected");
+    }else if(s==="failed"){
+      setVoiceState("❌ WebRTC connection failed — mobile network NAT সমস্যা হ'ব পাৰে");
+    }else if(s==="disconnected"){
+      setVoiceState("🟡 Phone connection temporarily disconnected");
+    }
   };
+
   peers.set(remoteId,pc);
   candidateQueues.set(remoteId,[]);
   return pc;
 }
 
 async function handleHello(p){
-  if(!p||!p.from||p.from===currentUser.id)return;
-  if(currentUser.id < p.from){
-    if(announcedPeers.has(p.from)) return;
-    announcedPeers.add(p.from);
-    const pc=createPeer(p.from);
-    if(pc.signalingState !== "stable" || pc.localDescription) return;
-    const offer=await pc.createOffer();
+  if(!p || !p.from || p.from===currentUser.id)return;
+
+  const remoteId=p.from;
+  let pc=peers.get(remoteId);
+
+  if(!pc || pc.connectionState==="failed" || pc.connectionState==="closed"){
+    removePeer(remoteId);
+    pc=createPeer(remoteId);
+    announcedPeers.delete(remoteId);
+  }
+
+  // Only the lexicographically smaller user creates the offer.
+  // Repeated hello messages allow recovery if an earlier offer was lost.
+  if(currentUser.id < remoteId){
+    if(pc.signalingState!=="stable") return;
+
+    const offer=await pc.createOffer({
+      offerToReceiveAudio:true
+    });
+
     await pc.setLocalDescription(offer);
-    await sendSignal("offer",{from:currentUser.id,to:p.from,description:pc.localDescription});
-  }else createPeer(p.from);
+
+    await sendSignal("offer",{
+      from:currentUser.id,
+      to:remoteId,
+      description:pc.localDescription
+    });
+
+    announcedPeers.add(remoteId);
+  }
 }
 
 async function handleOffer(p){
-  if(!p||p.to!==currentUser.id||!p.from)return;
-  const pc=createPeer(p.from);
-  await pc.setRemoteDescription(new RTCSessionDescription(p.description));
-  await flushCandidates(p.from);
-  const answer=await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  await sendSignal("answer",{from:currentUser.id,to:p.from,description:pc.localDescription});
+  if(!p || p.to!==currentUser.id || !p.from || !p.description)return;
+
+  let pc=peers.get(p.from);
+
+  if(!pc || pc.connectionState==="failed" || pc.connectionState==="closed"){
+    removePeer(p.from);
+    pc=createPeer(p.from);
+  }
+
+  try{
+    await pc.setRemoteDescription(new RTCSessionDescription(p.description));
+    await flushCandidates(p.from);
+
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await sendSignal("answer",{
+      from:currentUser.id,
+      to:p.from,
+      description:pc.localDescription
+    });
+  }catch(e){
+    setVoiceState("❌ Offer/Answer error: "+escapeHtml(e.message));
+  }
 }
 
 async function handleAnswer(p){
-  if(!p||p.to!==currentUser.id||!p.from)return;
-  const pc=peers.get(p.from); if(!pc)return;
-  await pc.setRemoteDescription(new RTCSessionDescription(p.description));
-  await flushCandidates(p.from);
+  if(!p || p.to!==currentUser.id || !p.from || !p.description)return;
+
+  const pc=peers.get(p.from);
+  if(!pc)return;
+
+  try{
+    if(pc.signalingState!=="have-local-offer")return;
+
+    await pc.setRemoteDescription(new RTCSessionDescription(p.description));
+    await flushCandidates(p.from);
+  }catch(e){
+    setVoiceState("❌ Answer error: "+escapeHtml(e.message));
+  }
 }
 
 async function handleCandidate(p){
-  if(!p||p.to!==currentUser.id||!p.from||!p.candidate)return;
+  if(!p || p.to!==currentUser.id || !p.from || !p.candidate)return;
+
   const pc=peers.get(p.from)||createPeer(p.from);
-  if(pc.remoteDescription&&pc.remoteDescription.type){
-    try{await pc.addIceCandidate(new RTCIceCandidate(p.candidate));}catch(e){}
+
+  if(pc.remoteDescription && pc.remoteDescription.type){
+    try{
+      await pc.addIceCandidate(new RTCIceCandidate(p.candidate));
+    }catch(e){}
   }else{
+    if(!candidateQueues.has(p.from))candidateQueues.set(p.from,[]);
     candidateQueues.get(p.from).push(p.candidate);
   }
 }
 
 async function flushCandidates(remoteId){
-  const pc=peers.get(remoteId); const q=candidateQueues.get(remoteId)||[];
-  for(const c of q){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(e){}}
+  const pc=peers.get(remoteId);
+  if(!pc)return;
+
+  const q=candidateQueues.get(remoteId)||[];
+
+  for(const c of q){
+    try{
+      await pc.addIceCandidate(new RTCIceCandidate(c));
+    }catch(e){}
+  }
+
   candidateQueues.set(remoteId,[]);
 }
 
 function handleBye(p){
-  if(p?.from){ announcedPeers.delete(p.from); removePeer(p.from); }
+  if(p?.from){
+    announcedPeers.delete(p.from);
+    removePeer(p.from);
+  }
 }
 
 function enableSpeaker(){
   const audio=document.getElementById("remoteAudio");
-  audio.muted=false; audio.volume=1;
+  audio.muted=false;
+  audio.volume=1;
+
   audio.play().then(()=>{
     document.getElementById("listenBtn").classList.add("hidden");
-    setVoiceState("🟢 Voice শুনি আছে — PTT ready");
-  }).catch(()=>setVoiceState("❌ Speaker চালু কৰিব পৰা নগ'ল"));
+    setVoiceState("🟢 Speaker চালু — PTT ready");
+  }).catch(()=>{
+    setVoiceState("❌ Speaker চালু কৰিব পৰা নগ'ল");
+  });
 }
 
 function removePeer(remoteId){
   const pc=peers.get(remoteId);
-  if(pc) pc.close();
-  peers.delete(remoteId); candidateQueues.delete(remoteId);
+  if(pc){
+    try{pc.close();}catch(e){}
+  }
+  peers.delete(remoteId);
+  candidateQueues.delete(remoteId);
 }
 
 let pttHeld=false;
 let pttStarting=false;
 
 async function startTalking(e){
-  if(e) e.preventDefault();
+  if(e)e.preventDefault();
+
   pttHeld=true;
+
   const b=document.getElementById("pttBtn");
 
-  // First press can start the microphone/voice connection automatically.
   if(!localAudioTrack){
     if(pttStarting)return;
+
     pttStarting=true;
     b.classList.add("talking");
     b.innerHTML="🟡 CONNECTING...<br>PLEASE HOLD";
     setVoiceState("🎙️ Voice connecting — microphone permission may appear...");
+
     const ok=await connectVoice();
+
     pttStarting=false;
+
     if(!ok || !localAudioTrack){
       b.classList.remove("talking");
       b.innerHTML="PRESS & HOLD<br>TO TALK";
       pttHeld=false;
       return;
     }
+
     if(!pttHeld)return;
   }
 
@@ -364,18 +533,31 @@ async function startTalking(e){
 }
 
 function stopTalking(e){
-  if(e) e.preventDefault();
+  if(e)e.preventDefault();
+
   pttHeld=false;
+
   if(!localAudioTrack)return;
+
   localAudioTrack.enabled=false;
+
   const b=document.getElementById("pttBtn");
   b.classList.remove("talking");
   b.innerHTML="PRESS & HOLD<br>TO TALK";
-  setVoiceState(voiceChannel ? "🟢 Voice connected — PTT ready" : "Voice বন্ধ");
+
+  if(peers.size){
+    setVoiceState("🟢 Phone-to-phone audio connected — PTT ready");
+  }else{
+    setVoiceState(voiceChannel ? "🟢 Voice connected — waiting for another phone" : "Voice বন্ধ");
+  }
 }
+
 const ptt=document.getElementById("pttBtn");
+
 ptt.addEventListener("pointerdown",startTalking,{passive:false});
-["pointerup","pointercancel","pointerleave"].forEach(ev=>ptt.addEventListener(ev,stopTalking,{passive:false}));
+["pointerup","pointercancel","pointerleave"].forEach(ev=>{
+  ptt.addEventListener(ev,stopTalking,{passive:false});
+});
 ptt.addEventListener("contextmenu",e=>e.preventDefault());
 
 async function disconnectVoice(){
