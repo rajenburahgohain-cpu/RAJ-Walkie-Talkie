@@ -1,3075 +1,638 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="as">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>RAJ Walkie Talkie</title>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <style>
-*{
-  box-sizing:border-box;
-  font-family:Arial,"Noto Sans Assamese",sans-serif
-}
-
-body{
-  margin:0;
-  background:#f2f6fb;
-  color:#17202a
-}
-
-header{
-  background:linear-gradient(135deg,#123c69,#087f8c);
-  color:#fff;
-  padding:22px 16px;
-  text-align:center
-}
-
-header h1{
-  margin:0;
-  font-size:26px
-}
-
-header p{
-  margin:7px 0 0;
-  opacity:.9
-}
-
-main{
-  max-width:650px;
-  margin:auto;
-  padding:18px
-}
-
-.card{
-  background:#fff;
-  border-radius:16px;
-  padding:20px;
-  margin-bottom:18px;
-  box-shadow:0 5px 18px rgba(0,0,0,.08)
-}
-
-h2{
-  margin-top:0
-}
-
-input,
-select{
-  width:100%;
-  padding:13px;
-  margin:8px 0;
-  border:1px solid #ccd6df;
-  border-radius:10px;
-  font-size:16px;
-  background:#fff
-}
-
-button{
-  width:100%;
-  padding:13px;
-  margin-top:9px;
-  border:0;
-  border-radius:10px;
-  background:#087f8c;
-  color:#fff;
-  font-size:16px;
-  cursor:pointer
-}
-
-button.secondary{
-  background:#365f7d
-}
-
-button.danger{
-  background:#b83232
-}
-
-button.ptt{
-  height:150px;
-  border-radius:50%;
-  max-width:260px;
-  display:block;
-  margin:18px auto;
-  font-size:25px;
-  font-weight:bold;
-  background:#123c69;
-  box-shadow:0 8px 20px rgba(18,60,105,.25);
-  touch-action:none;
-  user-select:none;
-  -webkit-user-select:none;
-  -webkit-touch-callout:none;
-}
-
-button.ptt.talking{
-  background:#b83232;
-  transform:scale(1.03)
-}
-
-button.ptt.connecting{
-  background:#d18b00;
-}
-
-button:disabled{
-  opacity:.55;
-  cursor:not-allowed
-}
-
-.hidden{
-  display:none
-}
-
-.status{
-  padding:10px;
-  margin-top:10px;
-  border-radius:9px;
-  background:#eef5f8
-}
-
-.code{
-  font-size:25px;
-  font-weight:bold;
-  text-align:center;
-  padding:15px;
-  border-radius:12px;
-  background:#eef8f8;
-  letter-spacing:2px;
-  word-break:break-all
-}
-
-.member{
-  padding:12px;
-  border-bottom:1px solid #eee
-}
-
-.small{
-  font-size:13px;
-  color:#667
-}
-
-.plan{
-  font-size:13px;
-  color:#53606b;
-  background:#f7fafc;
-  padding:10px;
-  border-radius:10px
-}
-
-.officeBtn{
-  margin-top:8px;
-  text-align:left;
-  background:#f0f7f8;
-  color:#123c69;
-  border:1px solid #d7e8ea
-}
-
-.voiceState{
-  text-align:center;
-  font-weight:bold;
-  font-size:17px
-}
-
-.planPanel{
-  margin-top:14px;
-  padding:14px;
-  border:1px solid #d7e8ea;
-  border-radius:12px;
-  background:#f8fbfc
-}
-
-.planGrid{
-  display:grid;
-  gap:10px
-}
-
-.adminOnly{
-  border-left:4px solid #123c69
-}
-
-.voiceReady{
-  color:#087f8c
-}
-
-.voiceTalking{
-  color:#b83232
-}
-
-.voiceWaiting{
-  color:#d18b00
-}
+*{box-sizing:border-box;font-family:Arial,"Noto Sans Assamese",sans-serif}
+body{margin:0;background:#f2f6fb;color:#17202a}
+header{background:linear-gradient(135deg,#123c69,#087f8c);color:#fff;padding:22px 16px;text-align:center}
+header h1{margin:0;font-size:26px} header p{margin:7px 0 0;opacity:.9}
+main{max-width:650px;margin:auto;padding:18px}.card{background:#fff;border-radius:16px;padding:20px;margin-bottom:18px;box-shadow:0 5px 18px rgba(0,0,0,.08)}
+h2{margin-top:0} input{width:100%;padding:13px;margin:8px 0;border:1px solid #ccd6df;border-radius:10px;font-size:16px}
+button{width:100%;padding:13px;margin-top:9px;border:0;border-radius:10px;background:#087f8c;color:#fff;font-size:16px;cursor:pointer}
+button.secondary{background:#365f7d} button.danger{background:#b83232}
+button.ptt{height:150px;border-radius:50%;max-width:260px;display:block;margin:18px auto;font-size:25px;font-weight:bold;background:#123c69;box-shadow:0 8px 20px rgba(18,60,105,.25);touch-action:none;user-select:none}
+button.ptt.talking{background:#b83232;transform:scale(1.03)}
+.hidden{display:none}.status{padding:10px;margin-top:10px;border-radius:9px;background:#eef5f8}
+.code{font-size:25px;font-weight:bold;text-align:center;padding:15px;border-radius:12px;background:#eef8f8;letter-spacing:2px;word-break:break-all}
+.member{padding:12px;border-bottom:1px solid #eee}.small{font-size:13px;color:#667}
+.plan{font-size:13px;color:#53606b;background:#f7fafc;padding:10px;border-radius:10px}
+.officeBtn{margin-top:8px;text-align:left;background:#f0f7f8;color:#123c69;border:1px solid #d7e8ea}
+.voiceState{text-align:center;font-weight:bold;font-size:17px}
 </style>
+<style>.planPanel{margin-top:14px;padding:14px;border:1px solid #d7e8ea;border-radius:12px;background:#f8fbfc}.planGrid{display:grid;gap:10px}.adminOnly{border-left:4px solid #123c69}</style>
 </head>
-
 <body>
-
-<header>
-  <h1>📻 RAJ Walkie Talkie</h1>
-  <p>Private Office Communication</p>
-</header>
-
+<header><h1>📻 RAJ Walkie Talkie</h1><p>Private Office Communication</p></header>
 <main>
 
-<!-- LOGIN -->
 <section id="loginSection" class="card">
-
-  <h2>🔐 Login</h2>
-
-  <input
-    id="email"
-    type="email"
-    placeholder="Email"
-    autocomplete="email"
-  >
-
-  <input
-    id="password"
-    type="password"
-    placeholder="Password"
-    autocomplete="current-password"
-  >
-
-  <button onclick="login()">Login</button>
-
-  <div id="loginStatus" class="status"></div>
-
+<h2>🔐 Login</h2>
+<input id="email" type="email" placeholder="Email" autocomplete="email">
+<input id="password" type="password" placeholder="Password" autocomplete="current-password">
+<button onclick="login()">Login</button>
+<div id="loginStatus" class="status"></div>
 </section>
 
-
-<!-- APP -->
 <section id="appSection" class="hidden">
-
-  <!-- ACCOUNT -->
-  <div class="card">
-
-    <h2>👤 Account</h2>
-
-    <div id="userEmail" class="small"></div>
-
-    <button
-      class="danger"
-      onclick="logout()"
-    >
-      Logout
-    </button>
-
-  </div>
-
-
-  <!-- CREATE GROUP -->
-  <div class="card">
-
-    <h2>🏢 Create Office</h2>
-
-    <input
-      id="officeName"
-      type="text"
-      placeholder="Office name"
-    >
-
-    <button onclick="createOffice()">
-      Create Office
-    </button>
-
-    <div id="createStatus" class="status"></div>
-
-  </div>
-
-
-  <!-- JOIN GROUP -->
-  <div class="card">
-
-    <h2>🔗 Join Office</h2>
-
-    <input
-      id="joinCode"
-      type="text"
-      placeholder="RAJ-XXXXXXXX"
-      autocomplete="off"
-    >
-
-    <button onclick="joinOffice()">
-      Join with Link Code
-    </button>
-
-    <div id="joinStatus" class="status"></div>
-
-  </div>
-
-
-  <!-- MY GROUPS -->
-  <div class="card">
-
-    <h2>🏢 My Offices</h2>
-
-    <div id="officeList">
-      Loading...
-    </div>
-
-  </div>
-
-
-  <!-- VOICE -->
-  <div id="voiceCard" class="card hidden">
-
-    <h2>📻 Office Voice</h2>
-
-    <div
-      id="selectedOffice"
-      class="small"
-    ></div>
-
-    <div
-      id="voiceStatus"
-      class="status voiceState"
-    >
-      Connecting to active group...
-    </div>
-
-
-    <!-- ONLY ONE VOICE BUTTON -->
-    <button
-      id="pttBtn"
-      class="ptt"
-      type="button"
-    >
-      PRESS &amp; HOLD<br>
-      TO TALK
-    </button>
-
-
-    <div class="plan">
-      🎙️ <b>Direct PTT</b><br><br>
-
-      Press and hold the button to talk.
-      Release the button to stop talking.
-      Connected phones can hear the voice.
-
-      <br><br>
-
-      The selected group is automatically activated
-      after login.
-    </div>
-
-
-    <!-- REMOTE AUDIO -->
-    <audio
-      id="remoteAudio"
-      autoplay
-      playsinline
-    ></audio>
-
-
-    <!-- GROUP ADMIN PANEL -->
-    <div
-      id="groupAdminPanel"
-      class="planPanel adminOnly hidden"
-    >
-
-      <h3>👑 Group Admin Panel</h3>
-
-      <div
-        id="planInfo"
-        class="small"
-      >
-        Loading plan...
-      </div>
-
-
-      <div class="planGrid">
-
-        <label>
-          Plan
-
-          <select id="planSelect">
-
-            <option value="free">
-              Free — ₹0/month — 10 users — Ads
-            </option>
-
-            <option value="premium">
-              Premium — ₹49/month — 50 users — No Ads
-            </option>
-
-            <option value="business">
-              Business — Custom — No Ads
-            </option>
-
-          </select>
-
-        </label>
-
-
-        <label
-          id="customPriceWrap"
-          class="hidden"
-        >
-          Business monthly charge (₹)
-
-          <input
-            id="customPrice"
-            type="number"
-            min="0"
-            step="1"
-            placeholder="Example: 299"
-          >
-
-        </label>
-
-
-        <label
-          id="customLimitWrap"
-          class="hidden"
-        >
-          Business maximum users/group
-
-          <input
-            id="customLimit"
-            type="number"
-            min="1"
-            step="1"
-            placeholder="Example: 100"
-          >
-
-        </label>
-
-
-        <button onclick="saveGroupPlan()">
-          💾 Save Group Plan
-        </button>
-
-        <div
-          id="planStatus"
-          class="status"
-        ></div>
-
-      </div>
-
-    </div>
-
-  </div>
-
+<div class="card">
+<h2>👤 Account</h2>
+<div id="userEmail" class="small"></div>
+<button class="danger" onclick="logout()">Logout</button>
+</div>
+
+<div class="card">
+<h2>🏢 Create Office</h2>
+<input id="officeName" type="text" placeholder="Office নাম">
+<button onclick="createOffice()">Create Office</button>
+<div id="createStatus" class="status"></div>
+</div>
+
+<div class="card">
+<h2>🔗 Join Office</h2>
+<input id="joinCode" type="text" placeholder="RAJ-XXXXXXXX" autocomplete="off">
+<button onclick="joinOffice()">Join with Link Code</button>
+<div id="joinStatus" class="status"></div>
+</div>
+
+<div class="card">
+<h2>🏢 My Offices</h2>
+<div id="officeList">Loading...</div>
+</div>
+
+<div id="voiceCard" class="card hidden">
+<h2>📻 Office Voice</h2>
+<div id="selectedOffice" class="small"></div>
+<div id="voiceStatus" class="status voiceState">Connecting to active group...</div>
+<button id="pttBtn" class="ptt">PRESS &amp; HOLD<br>TO TALK</button>
+<div class="plan">🎙️ Direct PTT: প্ৰথমে ওপৰৰ Office-টো টিপক। Voice connection আৰম্ভ হ'ব। তাৰ পিছত <b>PRESS & HOLD TO TALK</b> টিপি ধৰি কথা কওক; এৰি দিলে কথা বন্ধ। আন connected ফোনে শুনিব।</div>
+<audio id="remoteAudio" autoplay playsinline></audio>
+<div id="groupAdminPanel" class="planPanel adminOnly hidden">
+<h3>👑 Group Admin Panel</h3>
+<div id="planInfo" class="small">Loading plan...</div>
+<div class="planGrid">
+<label>Plan<select id="planSelect"><option value="free">Free — ₹0/month — 10 users — Ads</option><option value="premium">Premium — ₹49/month — 50 users — No Ads</option><option value="business">Business — Custom — No Ads</option></select></label>
+<label id="customPriceWrap" class="hidden">Business monthly charge (₹)<input id="customPrice" type="number" min="0" step="1" placeholder="যেনে 299"></label>
+<label id="customLimitWrap" class="hidden">Business maximum users/group<input id="customLimit" type="number" min="1" step="1" placeholder="যেনে 100"></label>
+<button onclick="saveGroupPlan()">💾 Save Group Plan</button><div id="planStatus" class="status"></div>
+</div></div>
+</div>
 </section>
-
 </main>
 
-
 <script>
+const SUPABASE_URL="https://nxpagmvyoylhtprzccxs.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_AT6zontM3G2V3a0dYfzaBQ_nq6K4ozm";
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 
-/* =========================================================
-   SUPABASE CONFIGURATION
-   ========================================================= */
-
-const SUPABASE_URL =
-  "https://nxpagmvyoylhtprzccxs.supabase.co";
-
-const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_AT6zontM3G2V3a0dYfzaBQ_nq6K4ozm";
-
-const supabaseClient =
-  window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY
-  );
-
-
-/* =========================================================
-   GLOBAL STATE
-   ========================================================= */
-
-let currentUser = null;
-
-let offices = [];
-
-let selectedOffice = null;
-
-let voiceChannel = null;
-
-let localStream = null;
-
-let localAudioTrack = null;
-
-let peers = new Map();
-
-let candidateQueues = new Map();
-
-let helloTimer = null;
-
-let remoteStream = null;
-
-let pttHeld = false;
-
-let pttStarting = false;
-
-let switchingOffice = false;
-
-
-/*
-   Saved active group.
-*/
-const ACTIVE_GROUP_KEY =
-  "raj_walkie_active_group";
-
-
-/* =========================================================
-   BASIC HELPERS
-   ========================================================= */
+let currentUser=null;
+let offices=[];
+let selectedOffice=null;
+let voiceChannel=null;
+let localStream=null;
+let localAudioTrack=null;
+let peers=new Map();
+let candidateQueues=new Map();
+let helloTimer=null;
+let announcedPeers=new Set();
+let remoteStream=null;
+const ACTIVE_GROUP_KEY="raj_walkie_active_group";
 
 function setStatus(id,message){
-
-  const el =
-    document.getElementById(id);
-
-  if(el){
-    el.innerHTML = message;
-  }
-
+  const el=document.getElementById(id);
+  if(el) el.innerHTML=message;
 }
-
-
 function escapeHtml(value){
-
-  return String(value ?? "")
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-
+  return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
-
-
-function setVoiceState(text){
-
-  const el =
-    document.getElementById("voiceStatus");
-
-  if(el){
-    el.textContent = text;
-  }
-
-}
-
-
-/* =========================================================
-   LOGIN
-   ========================================================= */
 
 async function login(){
-
-  const email =
-    document.getElementById("email")
-      .value
-      .trim();
-
-  const password =
-    document.getElementById("password")
-      .value;
-
-  if(!email || !password){
-
-    setStatus(
-      "loginStatus",
-      "❌ Email আৰু Password দিয়ক।"
-    );
-
-    return;
-  }
-
-
-  setStatus(
-    "loginStatus",
-    "🔐 Login কৰি থকা হৈছে..."
-  );
-
-
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.auth
-      .signInWithPassword({
-        email,
-        password
-      });
-
-
-  if(error){
-
-    setStatus(
-      "loginStatus",
-      "❌ Login ব্যর্থ: " +
-      escapeHtml(error.message)
-    );
-
-    return;
-  }
-
-
-  if(!data.session){
-
-    setStatus(
-      "loginStatus",
-      "❌ Login session পোৱা নগ'ল।"
-    );
-
-    return;
-  }
-
-
-  await showApp(data.session.user);
-
+  const email=document.getElementById("email").value.trim();
+  const password=document.getElementById("password").value;
+  if(!email||!password){setStatus("loginStatus","❌ Email আৰু Password দিয়ক।");return;}
+  setStatus("loginStatus","🔐 Login কৰি থকা হৈছে...");
+  const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(error){setStatus("loginStatus","❌ Login ব্যর্থ: "+escapeHtml(error.message));return;}
+  if(!data.session){setStatus("loginStatus","❌ Login session পোৱা নগ'ল।");return;}
+  showApp(data.session.user);
 }
-
-
-/* =========================================================
-   LOGOUT
-   ========================================================= */
 
 async function logout(){
-
   await disconnectVoice();
-
   await supabaseClient.auth.signOut();
-
-  currentUser = null;
-
-  offices = [];
-
-  selectedOffice = null;
-
-  document
-    .getElementById("appSection")
-    .classList.add("hidden");
-
-  document
-    .getElementById("loginSection")
-    .classList.remove("hidden");
-
-  setStatus(
-    "loginStatus",
-    "✅ Logout সফল।"
-  );
-
+  currentUser=null; offices=[]; selectedOffice=null;
+  document.getElementById("appSection").classList.add("hidden");
+  document.getElementById("loginSection").classList.remove("hidden");
+  setStatus("loginStatus","✅ Logout সফল।");
 }
 
-
-/* =========================================================
-   SHOW APP
-   ========================================================= */
-
-async function showApp(user){
-
-  currentUser = user;
-
-  document
-    .getElementById("loginSection")
-    .classList.add("hidden");
-
-  document
-    .getElementById("appSection")
-    .classList.remove("hidden");
-
-  document
-    .getElementById("userEmail")
-    .textContent =
-      "Login: " + (user.email || "");
-
-
-  await loadOffices();
-
+function showApp(user){
+  currentUser=user;
+  document.getElementById("loginSection").classList.add("hidden");
+  document.getElementById("appSection").classList.remove("hidden");
+  document.getElementById("userEmail").textContent="Login: "+(user.email||"");
+  loadOffices();
 }
-
-
-/* =========================================================
-   CREATE OFFICE
-   ========================================================= */
 
 async function createOffice(){
-
-  const name =
-    document.getElementById("officeName")
-      .value
-      .trim();
-
-
-  if(!name){
-
-    setStatus(
-      "createStatus",
-      "❌ Office name দিয়ক।"
-    );
-
-    return;
-  }
-
-
-  setStatus(
-    "createStatus",
-    "🏢 Office সৃষ্টি কৰি থকা হৈছে..."
-  );
-
-
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.rpc(
-      "create_office",
-      {
-        p_name:name
-      }
-    );
-
-
-  if(error){
-
-    setStatus(
-      "createStatus",
-      "❌ সমস্যা: " +
-      escapeHtml(error.message)
-    );
-
-    return;
-  }
-
-
-  const office =
-    Array.isArray(data)
-      ? data[0]
-      : data;
-
-
-  if(!office){
-
-    setStatus(
-      "createStatus",
-      "❌ Office data পোৱা নগ'ল।"
-    );
-
-    return;
-  }
-
-
-  setStatus(
-    "createStatus",
-
-    `<b>✅ Office সৃষ্টি সফল!</b>
-     <br><br>
-     Office:
-     ${escapeHtml(office.name)}
-     <br><br>
-     <div class="code">
-       ${escapeHtml(office.link_code)}
-     </div>
-     <br>
-     এই Code-টো সদস্যসকলক Join কৰিবলৈ দিব পাৰিব।`
-  );
-
-
-  document
-    .getElementById("officeName")
-    .value = "";
-
-
-  await loadOffices();
-
+  const name=document.getElementById("officeName").value.trim();
+  if(!name){setStatus("createStatus","❌ Office নাম দিয়ক।");return;}
+  setStatus("createStatus","🏢 Office সৃষ্টি কৰি থকা হৈছে...");
+  const {data,error}=await supabaseClient.rpc("create_office",{p_name:name});
+  if(error){setStatus("createStatus","❌ সমস্যা: "+escapeHtml(error.message));return;}
+  const office=Array.isArray(data)?data[0]:data;
+  if(!office){setStatus("createStatus","❌ Office data পোৱা নগ'ল।");return;}
+  setStatus("createStatus",`<b>✅ Office সৃষ্টি সফল!</b><br><br>Office: ${escapeHtml(office.name)}<br><br><div class="code">${escapeHtml(office.link_code)}</div><br>এই Code-টো সদস্যসকলক Join কৰিবলৈ দিব পাৰিব।`);
+  document.getElementById("officeName").value="";
+  loadOffices();
 }
-
-
-/* =========================================================
-   JOIN OFFICE
-   ========================================================= */
 
 async function joinOffice(){
-
-  const code =
-    document.getElementById("joinCode")
-      .value
-      .trim();
-
-
-  if(!code){
-
-    setStatus(
-      "joinStatus",
-      "❌ Link Code দিয়ক।"
-    );
-
-    return;
-  }
-
-
-  setStatus(
-    "joinStatus",
-    "🔗 Office-ত Join কৰি থকা হৈছে..."
-  );
-
-
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.rpc(
-      "join_office",
-      {
-        p_link_code:code
-      }
-    );
-
-
-  if(error){
-
-    setStatus(
-      "joinStatus",
-      "❌ Join ব্যর্থ: " +
-      escapeHtml(error.message)
-    );
-
-    return;
-  }
-
-
-  const office =
-    Array.isArray(data)
-      ? data[0]
-      : data;
-
-
-  if(!office){
-
-    setStatus(
-      "joinStatus",
-      "❌ Office data পোৱা নগ'ল।"
-    );
-
-    return;
-  }
-
-
-  setStatus(
-    "joinStatus",
-
-    `✅ Join সফল!
-     <br><br>
-     Office:
-     <b>${escapeHtml(office.name)}</b>`
-  );
-
-
-  document
-    .getElementById("joinCode")
-    .value = "";
-
-
-  /*
-     Make newly joined office the active group.
-  */
-  if(office.id){
-
-    localStorage.setItem(
-      ACTIVE_GROUP_KEY,
-      String(office.id)
-    );
-
-  }
-
-
-  await loadOffices();
-
+  const code=document.getElementById("joinCode").value.trim();
+  if(!code){setStatus("joinStatus","❌ Link Code দিয়ক।");return;}
+  setStatus("joinStatus","🔗 Office-ত Join কৰি থকা হৈছে...");
+  const {data,error}=await supabaseClient.rpc("join_office",{p_link_code:code});
+  if(error){setStatus("joinStatus","❌ Join ব্যর্থ: "+escapeHtml(error.message));return;}
+  const office=Array.isArray(data)?data[0]:data;
+  setStatus("joinStatus",`✅ Join সফল!<br><br>Office: <b>${escapeHtml(office.name)}</b>`);
+  document.getElementById("joinCode").value="";
+  loadOffices();
 }
-
-
-/* =========================================================
-   LOAD OFFICES
-   ========================================================= */
 
 async function loadOffices(){
-
-  const list =
-    document.getElementById("officeList");
-
-  list.innerHTML = "Loading...";
-
-
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.rpc(
-      "get_my_offices"
-    );
-
-
-  if(error){
-
-    list.innerHTML =
-      "❌ " +
-      escapeHtml(error.message);
-
-    return;
-  }
-
-
-  offices = data || [];
-
-
+  const list=document.getElementById("officeList");
+  list.innerHTML="Loading...";
+  const {data,error}=await supabaseClient.rpc("get_my_offices");
+  if(error){list.innerHTML="❌ "+escapeHtml(error.message);return;}
+  offices=data||[];
   if(!offices.length){
-
-    list.innerHTML =
-      "এতিয়াও কোনো Office-ত Join কৰা হোৱা নাই।";
-
-    document
-      .getElementById("voiceCard")
-      .classList.add("hidden");
-
+    list.innerHTML="এতিয়াও কোনো Office-ত Join কৰা হোৱা নাই।";
+    document.getElementById("voiceCard").classList.add("hidden");
     return;
   }
-
-
-  list.innerHTML = "";
-
-
-  offices.forEach((office)=>{
-
-    const div =
-      document.createElement("div");
-
-    div.className = "member";
-
-
-    const button =
-      document.createElement("button");
-
-    button.className =
-      "officeBtn";
-
-    button.textContent =
-      "🏢 " +
-      office.office_name +
-      " • " +
-      office.role;
-
-
-    button.onclick =
-      () => selectOffice(office);
-
-
-    div.appendChild(button);
-
-
-    const code =
-      document.createElement("div");
-
-    code.className = "code";
-
-    code.textContent =
-      office.link_code;
-
-
+  list.innerHTML="";
+  offices.forEach((office,index)=>{
+    const div=document.createElement("div");
+    div.className="member";
+    const b=document.createElement("button");
+    b.className="officeBtn";
+    b.textContent="🏢 "+office.office_name+"  •  "+office.role;
+    b.onclick=()=>selectOffice(office);
+    div.appendChild(b);
+    const code=document.createElement("div");
+    code.className="code"; code.textContent=office.link_code;
     div.appendChild(code);
-
     list.appendChild(div);
-
   });
 
-
-  /*
-     Automatically select the saved group.
-     If no saved group exists, use the first group.
-  */
-
-  const savedId =
-    localStorage.getItem(
-      ACTIVE_GROUP_KEY
-    );
-
-
-  const savedOffice =
-    offices.find(
-      office =>
-        String(office.office_id) ===
-        String(savedId)
-    );
-
-
-  const target =
-    savedOffice || offices[0];
-
-
+  const savedId=localStorage.getItem(ACTIVE_GROUP_KEY);
+  const savedOffice=offices.find(o=>String(o.office_id)===String(savedId));
+  const target=savedOffice||offices[0];
   if(target){
-
     await selectOffice(target);
-
   }
-
 }
-
-
-/* =========================================================
-   SELECT ACTIVE OFFICE
-   ========================================================= */
 
 async function selectOffice(office){
-
-  if(!office){
-    return;
+  if(!office)return;
+  if(selectedOffice?.office_id!==office.office_id){
+    await disconnectVoice();
   }
-
-
-  if(
-    selectedOffice &&
-    String(selectedOffice.office_id) ===
-    String(office.office_id) &&
-    voiceChannel &&
-    localStream
-  ){
-
-    /*
-       Already active.
-    */
-
-    return;
-  }
-
-
-  if(switchingOffice){
-    return;
-  }
-
-
-  switchingOffice = true;
-
-
-  try{
-
-    if(
-      selectedOffice &&
-      String(selectedOffice.office_id) !==
-      String(office.office_id)
-    ){
-
-      await disconnectVoice();
-
-    }
-
-
-    selectedOffice = office;
-
-
-    /*
-       Save active group.
-    */
-
-    localStorage.setItem(
-      ACTIVE_GROUP_KEY,
-      String(office.office_id)
-    );
-
-
-    document
-      .getElementById("voiceCard")
-      .classList.remove("hidden");
-
-
-    document
-      .getElementById("selectedOffice")
-      .textContent =
-        "Active Group: " +
-        office.office_name;
-
-
-    const button =
-      document.getElementById("pttBtn");
-
-
-    button.classList.remove("hidden");
-
-    button.classList.remove("talking");
-
-    button.classList.remove("connecting");
-
-    button.disabled = false;
-
-    button.innerHTML =
-      "PRESS &amp; HOLD<br>TO TALK";
-
-
-    /*
-       Start voice connection first.
-       Admin plan loading happens separately.
-    */
-
-    setVoiceState(
-      "🟡 Activating active group..."
-    );
-
-
-    await connectVoice();
-
-
-    await loadGroupPlan();
-
-  }
-
-  finally{
-
-    switchingOffice = false;
-
-  }
-
+  selectedOffice=office;
+  localStorage.setItem(ACTIVE_GROUP_KEY,String(office.office_id));
+  document.getElementById("voiceCard").classList.remove("hidden");
+  document.getElementById("selectedOffice").textContent="Active Group: "+office.office_name;
+  const btn=document.getElementById("pttBtn");
+  btn.classList.remove("hidden");
+  btn.disabled=false;
+  btn.innerHTML="PRESS &amp; HOLD<br>TO TALK";
+  await loadGroupPlan();
+  await connectVoice();
 }
 
-
-/* =========================================================
-   CONNECT VOICE
-   ========================================================= */
 
 async function connectVoice(){
-
   if(!selectedOffice){
-
-    setVoiceState(
-      "❌ প্ৰথমে এটা Office বাছক।"
-    );
-
+    setVoiceState("❌ প্ৰথমে এটা Office বাছক।");
     return false;
   }
-
-
-  /*
-     Prevent duplicate connections.
-  */
-
-  if(
-    voiceChannel &&
-    localStream &&
-    localAudioTrack
-  ){
-
+  if(voiceChannel && localStream){
     return true;
   }
 
-
-  const button =
-    document.getElementById("pttBtn");
-
+  const btn=document.getElementById("pttBtn");
 
   try{
-
-    if(
-      !navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia
-    ){
-
-      throw new Error(
-        "Microphone access is not available. Use HTTPS Chrome."
-      );
-
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error("এই browser-ত microphone access নাই। HTTPS page-ত Chrome ব্যৱহাৰ কৰক।");
     }
 
+    localStream=await navigator.mediaDevices.getUserMedia({
+      audio:{
+        echoCancellation:true,
+        noiseSuppression:true,
+        autoGainControl:true
+      },
+      video:false
+    });
 
-    /*
-       Get microphone.
-       Track remains disabled until PTT is pressed.
-    */
+    localAudioTrack=localStream.getAudioTracks()[0];
+    localAudioTrack.enabled=false;
 
-    localStream =
-      await navigator.mediaDevices
-        .getUserMedia({
-
-          audio:{
-            echoCancellation:true,
-            noiseSuppression:true,
-            autoGainControl:true
-          },
-
-          video:false
-
-        });
-
-
-    localAudioTrack =
-      localStream.getAudioTracks()[0];
-
-
-    if(!localAudioTrack){
-
-      throw new Error(
-        "No microphone audio track was created."
-      );
-
-    }
-
-
-    /*
-       PTT OFF by default.
-    */
-
-    localAudioTrack.enabled = false;
-
-
-    const topic =
-      "office:" +
-      selectedOffice.office_id;
-
-
-    voiceChannel =
-      supabaseClient.channel(
-        topic,
-        {
-          config:{
-            private:true
-          }
-        }
-      );
-
-
-    /*
-       WebRTC signaling events.
-    */
+    const topic="office:"+selectedOffice.office_id;
+    voiceChannel=supabaseClient.channel(topic,{config:{private:true}});
 
     voiceChannel
+      .on("broadcast",{event:"hello"},({payload})=>handleHello(payload))
+      .on("broadcast",{event:"offer"},({payload})=>handleOffer(payload))
+      .on("broadcast",{event:"answer"},({payload})=>handleAnswer(payload))
+      .on("broadcast",{event:"candidate"},({payload})=>handleCandidate(payload))
+      .on("broadcast",{event:"bye"},({payload})=>handleBye(payload));
 
-      .on(
-        "broadcast",
-        {event:"hello"},
-        ({payload}) =>
-          handleHello(payload)
-      )
+    voiceChannel.subscribe(async status=>{
+      if(status==="SUBSCRIBED"){
+        setVoiceState("🟢 Voice connected — PTT ready");
+        btn.classList.remove("hidden");
+        btn.innerHTML="PRESS &amp; HOLD<br>TO TALK";
 
-      .on(
-        "broadcast",
-        {event:"offer"},
-        ({payload}) =>
-          handleOffer(payload)
-      )
+        await sendSignal("hello",{from:currentUser.id});
 
-      .on(
-        "broadcast",
-        {event:"answer"},
-        ({payload}) =>
-          handleAnswer(payload)
-      )
+        clearInterval(helloTimer);
+        helloTimer=setInterval(async ()=>{
+          if(voiceChannel){
+            await sendSignal("hello",{from:currentUser.id});
+          }
+        },2000);
 
-      .on(
-        "broadcast",
-        {event:"candidate"},
-        ({payload}) =>
-          handleCandidate(payload)
-      )
-
-      .on(
-        "broadcast",
-        {event:"bye"},
-        ({payload}) =>
-          handleBye(payload)
-      );
-
-
-    /*
-       Subscribe.
-    */
-
-    voiceChannel.subscribe(
-      async status => {
-
-        if(status === "SUBSCRIBED"){
-
-          setVoiceState(
-            "🟢 Voice connected — PTT ready"
-          );
-
-
-          button.disabled = false;
-
-          button.classList.remove(
-            "connecting"
-          );
-
-
-          button.innerHTML =
-            "PRESS &amp; HOLD<br>TO TALK";
-
-
-          /*
-             Announce this user.
-          */
-
-          await sendSignal(
-            "hello",
-            {
-              from:currentUser.id
-            }
-          );
-
-
-          clearInterval(helloTimer);
-
-
-          /*
-             Periodic hello helps new phones
-             discover existing phones.
-          */
-
-          helloTimer =
-            setInterval(
-              async()=>{
-
-                if(
-                  voiceChannel &&
-                  currentUser
-                ){
-
-                  await sendSignal(
-                    "hello",
-                    {
-                      from:currentUser.id
-                    }
-                  );
-
-                }
-
-              },
-              2000
-            );
-
-        }
-
-
-        else if(
-          status === "CHANNEL_ERROR" ||
-          status === "TIMED_OUT"
-        ){
-
-          setVoiceState(
-            "❌ Voice channel connection failed"
-          );
-
-
-          button.disabled = false;
-
-          button.classList.remove(
-            "connecting"
-          );
-
-        }
-
+      }else if(status==="CHANNEL_ERROR" || status==="TIMED_OUT"){
+        setVoiceState("❌ Voice connection failed — press the same button to retry.");
+        btn.classList.remove("hidden");
+        btn.innerHTML="PRESS &amp; HOLD<br>TO TALK";
       }
-    );
-
+    });
 
     return true;
-
-  }
-
-  catch(error){
-
-    console.error(
-      "Voice connection error:",
-      error
-    );
-
-
+  }catch(e){
+    btn.classList.remove("talking");
+    btn.innerHTML="PRESS & HOLD<br>TO TALK";
     if(localStream){
-
-      localStream
-        .getTracks()
-        .forEach(track => track.stop());
-
+      localStream.getTracks().forEach(t=>t.stop());
+      localStream=null;
     }
-
-
-    localStream = null;
-
-    localAudioTrack = null;
-
-
-    if(voiceChannel){
-
-      try{
-
-        await supabaseClient
-          .removeChannel(
-            voiceChannel
-          );
-
-      }
-
-      catch(e){}
-
-    }
-
-
-    voiceChannel = null;
-
-
-    button.classList.remove(
-      "talking"
-    );
-
-    button.classList.remove(
-      "connecting"
-    );
-
-
-    button.innerHTML =
-      "PRESS &amp; HOLD<br>TO TALK";
-
-
-    setVoiceState(
-      "⚠️ Microphone permission needed. Press and hold PTT to retry."
-    );
-
-
+    localAudioTrack=null;
+    setVoiceState("❌ Microphone সমস্যা: "+escapeHtml(e.message));
     return false;
-
   }
-
 }
 
+function setVoiceState(text){
+  document.getElementById("voiceStatus").textContent=text;
+}
 
-/* =========================================================
-   SEND SIGNAL
-   ========================================================= */
-
-async function sendSignal(
-  event,
-  payload
-){
-
-  if(!voiceChannel){
-    return;
-  }
-
-
+async function sendSignal(event,payload){
+  if(!voiceChannel)return;
   try{
-
     await voiceChannel.send({
-
       type:"broadcast",
-
-      event:event,
-
-      payload:payload
-
+      event,
+      payload
     });
-
-  }
-
-  catch(error){
-
-    console.warn(
-      "Signal error:",
-      error
-    );
-
-  }
-
+  }catch(e){}
 }
-
-
-/* =========================================================
-   CREATE WEBRTC PEER
-   ========================================================= */
 
 function createPeer(remoteId){
+  if(peers.has(remoteId)) return peers.get(remoteId);
 
-  if(peers.has(remoteId)){
+  const pc=new RTCPeerConnection({
+    iceServers:[
+      {urls:"stun:stun.l.google.com:19302"},
+      {urls:"stun:stun1.l.google.com:19302"}
+    ]
+  });
 
-    return peers.get(remoteId);
-
+  if(localStream){
+    localStream.getTracks().forEach(track=>{
+      pc.addTrack(track,localStream);
+    });
   }
 
+  pc.onicecandidate=e=>{
+    if(e.candidate){
+      sendSignal("candidate",{
+        from:currentUser.id,
+        to:remoteId,
+        candidate:e.candidate
+      });
+    }
+  };
 
-  const pc =
-    new RTCPeerConnection({
+  pc.ontrack=e=>{
+    const audio=document.getElementById("remoteAudio");
 
-      /*
-         STUN helps discover public network
-         addresses.
+    if(!remoteStream){
+      remoteStream=new MediaStream();
+    }
 
-         TURN should be added for reliable
-         production use across mobile NAT/CGNAT.
-      */
+    if(e.track && !remoteStream.getTracks().some(t=>t.id===e.track.id)){
+      remoteStream.addTrack(e.track);
+    }
 
-      iceServers:[
+    audio.srcObject=remoteStream;
+    audio.autoplay=true;
+    audio.playsInline=true;
+    audio.muted=false;
+    audio.volume=1;
 
-        {
-          urls:
-            "stun:stun.l.google.com:19302"
-        },
+    audio.play().then(()=>{
+      setVoiceState("🟢 Audio received — PTT ready");
+    }).catch(()=>{
+      setVoiceState("⚠️ Press and hold the PTT button once to enable audio.");
+    });
+  };
 
-        {
-          urls:
-            "stun:stun1.l.google.com:19302"
-        }
+  pc.oniceconnectionstatechange=()=>{
+    const s=pc.iceConnectionState;
+    if(s==="checking"){
+      setVoiceState("🟡 দুটা ফোন connect কৰি থকা হৈছে...");
+    }else if(s==="connected" || s==="completed"){
+      setVoiceState("🟢 Phone-to-phone audio connected");
+    }else if(s==="failed"){
+      setVoiceState("❌ Phone-to-phone connection failed — TURN server লাগিব পাৰে");
+      removePeer(remoteId);
+    }
+  };
 
-      ]
+  pc.onconnectionstatechange=()=>{
+    const s=pc.connectionState;
+    if(s==="connected"){
+      setVoiceState("🟢 Phone-to-phone audio connected");
+    }else if(s==="failed"){
+      setVoiceState("❌ WebRTC connection failed — mobile network NAT সমস্যা হ'ব পাৰে");
+    }else if(s==="disconnected"){
+      setVoiceState("🟡 Phone connection temporarily disconnected");
+    }
+  };
 
+  peers.set(remoteId,pc);
+  candidateQueues.set(remoteId,[]);
+  return pc;
+}
+
+async function handleHello(p){
+  if(!p || !p.from || p.from===currentUser.id)return;
+
+  const remoteId=p.from;
+  let pc=peers.get(remoteId);
+
+  if(!pc || pc.connectionState==="failed" || pc.connectionState==="closed"){
+    removePeer(remoteId);
+    pc=createPeer(remoteId);
+    announcedPeers.delete(remoteId);
+  }
+
+  // Only the lexicographically smaller user creates the offer.
+  // Repeated hello messages allow recovery if an earlier offer was lost.
+  if(currentUser.id < remoteId){
+    if(pc.signalingState!=="stable") return;
+
+    const offer=await pc.createOffer({
+      offerToReceiveAudio:true
     });
 
+    await pc.setLocalDescription(offer);
 
-  /*
-     Add microphone track.
-     It is disabled until PTT is pressed.
-  */
+    await sendSignal("offer",{
+      from:currentUser.id,
+      to:remoteId,
+      description:pc.localDescription
+    });
 
-  if(localStream){
-
-    localStream
-      .getTracks()
-      .forEach(track => {
-
-        pc.addTrack(
-          track,
-          localStream
-        );
-
-      });
-
+    announcedPeers.add(remoteId);
   }
-
-
-  /*
-     ICE candidate.
-  */
-
-  pc.onicecandidate =
-    event => {
-
-      if(event.candidate){
-
-        sendSignal(
-          "candidate",
-          {
-
-            from:currentUser.id,
-
-            to:remoteId,
-
-            candidate:event.candidate
-
-          }
-        );
-
-      }
-
-    };
-
-
-  /*
-     Remote audio.
-  */
-
-  pc.ontrack =
-    async event => {
-
-      const audio =
-        document.getElementById(
-          "remoteAudio"
-        );
-
-
-      if(!remoteStream){
-
-        remoteStream =
-          new MediaStream();
-
-      }
-
-
-      if(
-        event.track &&
-        !remoteStream
-          .getTracks()
-          .some(
-            track =>
-              track.id ===
-              event.track.id
-          )
-      ){
-
-        remoteStream.addTrack(
-          event.track
-        );
-
-      }
-
-
-      audio.srcObject =
-        remoteStream;
-
-      audio.autoplay = true;
-
-      audio.playsInline = true;
-
-      audio.muted = false;
-
-      audio.volume = 1;
-
-
-      /*
-         Mobile browsers may block autoplay.
-         PTT gesture can unlock playback.
-      */
-
-      try{
-
-        await audio.play();
-
-        setVoiceState(
-          "🟢 Audio received — PTT ready"
-        );
-
-      }
-
-      catch(error){
-
-        setVoiceState(
-          "⚠️ Press and hold PTT once to enable speaker audio."
-        );
-
-      }
-
-    };
-
-
-  /*
-     ICE connection state.
-  */
-
-  pc.oniceconnectionstatechange =
-    () => {
-
-      const state =
-        pc.iceConnectionState;
-
-
-      if(state === "checking"){
-
-        setVoiceState(
-          "🟡 Connecting phone-to-phone audio..."
-        );
-
-      }
-
-      else if(
-        state === "connected" ||
-        state === "completed"
-      ){
-
-        setVoiceState(
-          "🟢 Phone-to-phone audio connected"
-        );
-
-      }
-
-      else if(state === "failed"){
-
-        setVoiceState(
-          "❌ Phone-to-phone connection failed — TURN server may be required."
-        );
-
-        removePeer(remoteId);
-
-      }
-
-    };
-
-
-  /*
-     Peer connection state.
-  */
-
-  pc.onconnectionstatechange =
-    () => {
-
-      const state =
-        pc.connectionState;
-
-
-      if(state === "connected"){
-
-        setVoiceState(
-          "🟢 Phone-to-phone audio connected"
-        );
-
-      }
-
-      else if(state === "failed"){
-
-        setVoiceState(
-          "❌ WebRTC connection failed — mobile network NAT may be blocking direct connection."
-        );
-
-      }
-
-      else if(state === "disconnected"){
-
-        setVoiceState(
-          "🟡 Phone connection temporarily disconnected"
-        );
-
-      }
-
-    };
-
-
-  peers.set(
-    remoteId,
-    pc
-  );
-
-
-  candidateQueues.set(
-    remoteId,
-    []
-  );
-
-
-  return pc;
-
 }
 
+async function handleOffer(p){
+  if(!p || p.to!==currentUser.id || !p.from || !p.description)return;
 
-/* =========================================================
-   HANDLE HELLO
-   ========================================================= */
+  let pc=peers.get(p.from);
 
-async function handleHello(payload){
-
-  if(
-    !payload ||
-    !payload.from ||
-    payload.from === currentUser.id
-  ){
-
-    return;
-
+  if(!pc || pc.connectionState==="failed" || pc.connectionState==="closed"){
+    removePeer(p.from);
+    pc=createPeer(p.from);
   }
-
-
-  const remoteId =
-    payload.from;
-
-
-  let pc =
-    peers.get(remoteId);
-
-
-  if(
-    !pc ||
-    pc.connectionState === "failed" ||
-    pc.connectionState === "closed"
-  ){
-
-    removePeer(remoteId);
-
-    pc =
-      createPeer(remoteId);
-
-  }
-
-
-  /*
-     Only the smaller user ID creates offer.
-     This prevents both phones from creating
-     competing offers.
-  */
-
-  if(
-    currentUser.id <
-    remoteId
-  ){
-
-    if(
-      pc.signalingState !==
-      "stable"
-    ){
-
-      return;
-
-    }
-
-
-    try{
-
-      const offer =
-        await pc.createOffer({
-
-          offerToReceiveAudio:true
-
-        });
-
-
-      await pc.setLocalDescription(
-        offer
-      );
-
-
-      await sendSignal(
-        "offer",
-        {
-
-          from:currentUser.id,
-
-          to:remoteId,
-
-          description:
-            pc.localDescription
-
-        }
-      );
-
-    }
-
-    catch(error){
-
-      console.error(
-        "Offer error:",
-        error
-      );
-
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   HANDLE OFFER
-   ========================================================= */
-
-async function handleOffer(payload){
-
-  if(
-    !payload ||
-    payload.to !== currentUser.id ||
-    !payload.from ||
-    !payload.description
-  ){
-
-    return;
-
-  }
-
-
-  const remoteId =
-    payload.from;
-
-
-  let pc =
-    peers.get(remoteId);
-
-
-  if(
-    !pc ||
-    pc.connectionState === "failed" ||
-    pc.connectionState === "closed"
-  ){
-
-    removePeer(remoteId);
-
-    pc =
-      createPeer(remoteId);
-
-  }
-
 
   try{
+    await pc.setRemoteDescription(new RTCSessionDescription(p.description));
+    await flushCandidates(p.from);
 
-    await pc.setRemoteDescription(
-      new RTCSessionDescription(
-        payload.description
-      )
-    );
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
 
-
-    await flushCandidates(
-      remoteId
-    );
-
-
-    const answer =
-      await pc.createAnswer();
-
-
-    await pc.setLocalDescription(
-      answer
-    );
-
-
-    await sendSignal(
-      "answer",
-      {
-
-        from:currentUser.id,
-
-        to:remoteId,
-
-        description:
-          pc.localDescription
-
-      }
-    );
-
+    await sendSignal("answer",{
+      from:currentUser.id,
+      to:p.from,
+      description:pc.localDescription
+    });
+  }catch(e){
+    setVoiceState("❌ Offer/Answer error: "+escapeHtml(e.message));
   }
-
-  catch(error){
-
-    setVoiceState(
-      "❌ Offer/Answer error: " +
-      escapeHtml(error.message)
-    );
-
-  }
-
 }
 
+async function handleAnswer(p){
+  if(!p || p.to!==currentUser.id || !p.from || !p.description)return;
 
-/* =========================================================
-   HANDLE ANSWER
-   ========================================================= */
-
-async function handleAnswer(payload){
-
-  if(
-    !payload ||
-    payload.to !== currentUser.id ||
-    !payload.from ||
-    !payload.description
-  ){
-
-    return;
-
-  }
-
-
-  const pc =
-    peers.get(payload.from);
-
-
-  if(!pc){
-    return;
-  }
-
+  const pc=peers.get(p.from);
+  if(!pc)return;
 
   try{
+    if(pc.signalingState!=="have-local-offer")return;
 
-    if(
-      pc.signalingState !==
-      "have-local-offer"
-    ){
-
-      return;
-
-    }
-
-
-    await pc.setRemoteDescription(
-      new RTCSessionDescription(
-        payload.description
-      )
-    );
-
-
-    await flushCandidates(
-      payload.from
-    );
-
+    await pc.setRemoteDescription(new RTCSessionDescription(p.description));
+    await flushCandidates(p.from);
+  }catch(e){
+    setVoiceState("❌ Answer error: "+escapeHtml(e.message));
   }
-
-  catch(error){
-
-    setVoiceState(
-      "❌ Answer error: " +
-      escapeHtml(error.message)
-    );
-
-  }
-
 }
 
+async function handleCandidate(p){
+  if(!p || p.to!==currentUser.id || !p.from || !p.candidate)return;
 
-/* =========================================================
-   HANDLE ICE CANDIDATE
-   ========================================================= */
+  const pc=peers.get(p.from)||createPeer(p.from);
 
-async function handleCandidate(payload){
-
-  if(
-    !payload ||
-    payload.to !== currentUser.id ||
-    !payload.from ||
-    !payload.candidate
-  ){
-
-    return;
-
-  }
-
-
-  const remoteId =
-    payload.from;
-
-
-  const pc =
-    peers.get(remoteId) ||
-    createPeer(remoteId);
-
-
-  if(
-    pc.remoteDescription &&
-    pc.remoteDescription.type
-  ){
-
+  if(pc.remoteDescription && pc.remoteDescription.type){
     try{
-
-      await pc.addIceCandidate(
-        new RTCIceCandidate(
-          payload.candidate
-        )
-      );
-
-    }
-
-    catch(error){
-
-      console.warn(
-        "ICE candidate error:",
-        error
-      );
-
-    }
-
+      await pc.addIceCandidate(new RTCIceCandidate(p.candidate));
+    }catch(e){}
+  }else{
+    if(!candidateQueues.has(p.from))candidateQueues.set(p.from,[]);
+    candidateQueues.get(p.from).push(p.candidate);
   }
-
-  else{
-
-    if(
-      !candidateQueues.has(
-        remoteId
-      )
-    ){
-
-      candidateQueues.set(
-        remoteId,
-        []
-      );
-
-    }
-
-
-    candidateQueues
-      .get(remoteId)
-      .push(
-        payload.candidate
-      );
-
-  }
-
 }
 
+async function flushCandidates(remoteId){
+  const pc=peers.get(remoteId);
+  if(!pc)return;
 
-/* =========================================================
-   FLUSH ICE CANDIDATES
-   ========================================================= */
+  const q=candidateQueues.get(remoteId)||[];
 
-async function flushCandidates(
-  remoteId
-){
-
-  const pc =
-    peers.get(remoteId);
-
-
-  if(!pc){
-    return;
-  }
-
-
-  const queue =
-    candidateQueues.get(
-      remoteId
-    ) || [];
-
-
-  for(
-    const candidate of queue
-  ){
-
+  for(const c of q){
     try{
-
-      await pc.addIceCandidate(
-        new RTCIceCandidate(
-          candidate
-        )
-      );
-
-    }
-
-    catch(error){}
-
+      await pc.addIceCandidate(new RTCIceCandidate(c));
+    }catch(e){}
   }
 
-
-  candidateQueues.set(
-    remoteId,
-    []
-  );
-
+  candidateQueues.set(remoteId,[]);
 }
 
-
-/* =========================================================
-   HANDLE BYE
-   ========================================================= */
-
-function handleBye(payload){
-
-  if(payload?.from){
-
-    removePeer(
-      payload.from
-    );
-
+function handleBye(p){
+  if(p?.from){
+    announcedPeers.delete(p.from);
+    removePeer(p.from);
   }
-
 }
-
-
-/* =========================================================
-   REMOVE PEER
-   ========================================================= */
 
 function removePeer(remoteId){
-
-  const pc =
-    peers.get(remoteId);
-
-
+  const pc=peers.get(remoteId);
   if(pc){
-
-    try{
-
-      pc.close();
-
-    }
-
-    catch(error){}
-
+    try{pc.close();}catch(e){}
   }
-
-
-  peers.delete(
-    remoteId
-  );
-
-
-  candidateQueues.delete(
-    remoteId
-  );
-
+  peers.delete(remoteId);
+  candidateQueues.delete(remoteId);
 }
 
+let pttHeld=false;
+let pttStarting=false;
 
-/* =========================================================
-   PTT START
-   ========================================================= */
+async function startTalking(e){
+  if(e)e.preventDefault();
 
-async function startTalking(event){
+  pttHeld=true;
 
-  if(event){
+  const b=document.getElementById("pttBtn");
+  const audio=document.getElementById("remoteAudio");
+  audio.muted=false; audio.volume=1;
+  try{ await audio.play(); }catch(e){}
 
-    event.preventDefault();
-
-  }
-
-
-  /*
-     Ignore duplicate pointer events.
-  */
-
-  if(pttHeld){
-
-    return;
-
-  }
-
-
-  pttHeld = true;
-
-
-  const button =
-    document.getElementById(
-      "pttBtn"
-    );
-
-
-  const audio =
-    document.getElementById(
-      "remoteAudio"
-    );
-
-
-  /*
-     The same user gesture attempts to
-     unlock speaker playback.
-  */
-
-  audio.muted = false;
-
-  audio.volume = 1;
-
-
-  try{
-
-    await audio.play();
-
-  }
-
-  catch(error){}
-
-
-  /*
-     If microphone is not connected,
-     connect now.
-  */
+  // The same PTT button is the only voice control.
+  // On first press it also unlocks mobile speaker playback.
+  const remoteAudio=document.getElementById("remoteAudio");
+  remoteAudio.muted=false;
+  remoteAudio.volume=1;
+  try{ await remoteAudio.play(); }catch(e){}
 
   if(!localAudioTrack){
+    if(pttStarting)return;
 
-    if(pttStarting){
+    pttStarting=true;
+    b.classList.add("talking");
+    b.innerHTML="🟡 CONNECTING...<br>PLEASE HOLD";
+    setVoiceState("🎙️ Voice connecting — microphone permission may appear...");
 
+    const ok=await connectVoice();
+
+    pttStarting=false;
+
+    if(!ok || !localAudioTrack){
+      b.classList.remove("talking");
+      b.innerHTML="PRESS &amp; HOLD<br>TO TALK";
+      pttHeld=false;
       return;
-
     }
 
-
-    pttStarting = true;
-
-
-    button.classList.add(
-      "connecting"
-    );
-
-
-    button.innerHTML =
-      "🟡 CONNECTING...<br>PLEASE HOLD";
-
-
-    setVoiceState(
-      "🎙️ Connecting voice and microphone..."
-    );
-
-
-    const success =
-      await connectVoice();
-
-
-    pttStarting = false;
-
-
-    button.classList.remove(
-      "connecting"
-    );
-
-
-    if(
-      !success ||
-      !localAudioTrack
-    ){
-
-      button.classList.remove(
-        "talking"
-      );
-
-
-      button.innerHTML =
-        "PRESS &amp; HOLD<br>TO TALK";
-
-
-      pttHeld = false;
-
-      return;
-
-    }
-
-
-    /*
-       User released button while
-       microphone permission was opening.
-    */
-
-    if(!pttHeld){
-
-      localAudioTrack.enabled =
-        false;
-
-      return;
-
-    }
-
+    if(!pttHeld)return;
   }
 
-
-  /*
-     Enable microphone.
-  */
-
-  localAudioTrack.enabled =
-    true;
-
-
-  button.classList.add(
-    "talking"
-  );
-
-
-  button.innerHTML =
-    "🔴 TALKING<br>RELEASE";
-
-
-  setVoiceState(
-    "🔴 আপুনি কথা কৈ আছে..."
-  );
-
+  localAudioTrack.enabled=true;
+  b.classList.add("talking");
+  b.innerHTML="🔴 TALKING<br>RELEASE";
+  setVoiceState("🔴 আপুনি কথা কৈ আছে...");
 }
 
+function stopTalking(e){
+  if(e)e.preventDefault();
 
-/* =========================================================
-   PTT STOP
-   ========================================================= */
+  pttHeld=false;
 
-function stopTalking(event){
+  if(!localAudioTrack)return;
 
-  if(event){
+  localAudioTrack.enabled=false;
 
-    event.preventDefault();
-
-  }
-
-
-  pttHeld = false;
-
-
-  if(!localAudioTrack){
-
-    const button =
-      document.getElementById(
-        "pttBtn"
-      );
-
-    button.classList.remove(
-      "talking"
-    );
-
-    button.classList.remove(
-      "connecting"
-    );
-
-    button.innerHTML =
-      "PRESS &amp; HOLD<br>TO TALK";
-
-    return;
-
-  }
-
-
-  /*
-     Disable microphone.
-  */
-
-  localAudioTrack.enabled =
-    false;
-
-
-  const button =
-    document.getElementById(
-      "pttBtn"
-    );
-
-
-  button.classList.remove(
-    "talking"
-  );
-
-
-  button.classList.remove(
-    "connecting"
-  );
-
-
-  button.innerHTML =
-    "PRESS &amp; HOLD<br>TO TALK";
-
+  const b=document.getElementById("pttBtn");
+  b.classList.remove("talking");
+  b.innerHTML="PRESS & HOLD<br>TO TALK";
 
   if(peers.size){
-
-    setVoiceState(
-      "🟢 Phone-to-phone audio connected — PTT ready"
-    );
-
+    setVoiceState("🟢 Phone-to-phone audio connected — PTT ready");
+  }else{
+    setVoiceState(voiceChannel ? "🟢 Voice connected — waiting for another phone" : "Voice বন্ধ");
   }
-
-  else if(voiceChannel){
-
-    setVoiceState(
-      "🟢 Voice connected — waiting for another phone"
-    );
-
-  }
-
-  else{
-
-    setVoiceState(
-      "Voice বন্ধ"
-    );
-
-  }
-
 }
 
+const ptt=document.getElementById("pttBtn");
 
-/* =========================================================
-   PTT EVENTS
-   ========================================================= */
-
-const pttButton =
-  document.getElementById(
-    "pttBtn"
-  );
-
-
-pttButton.addEventListener(
-  "pointerdown",
-  startTalking,
-  {
-    passive:false
-  }
-);
-
-
-pttButton.addEventListener(
-  "pointerup",
-  stopTalking,
-  {
-    passive:false
-  }
-);
-
-
-pttButton.addEventListener(
-  "pointercancel",
-  stopTalking,
-  {
-    passive:false
-  }
-);
-
-
-pttButton.addEventListener(
-  "pointerleave",
-  stopTalking,
-  {
-    passive:false
-  }
-);
-
-
-pttButton.addEventListener(
-  "contextmenu",
-  event =>
-    event.preventDefault()
-);
-
-
-/*
-   Extra protection for touch screens.
-*/
-
-pttButton.addEventListener(
-  "lostpointercapture",
-  stopTalking,
-  {
-    passive:false
-  }
-);
-
-
-/* =========================================================
-   DISCONNECT VOICE
-   ========================================================= */
+ptt.addEventListener("pointerdown",startTalking,{passive:false});
+["pointerup","pointercancel","pointerleave"].forEach(ev=>{
+  ptt.addEventListener(ev,stopTalking,{passive:false});
+});
+ptt.addEventListener("contextmenu",e=>e.preventDefault());
 
 async function disconnectVoice(){
-
-  clearInterval(
-    helloTimer
-  );
-
-  helloTimer = null;
-
-
-  /*
-     Tell other phones that
-     this user is leaving.
-  */
-
+  clearInterval(helloTimer);
+  helloTimer=null;
   if(voiceChannel){
-
-    try{
-
-      await sendSignal(
-        "bye",
-        {
-          from:
-            currentUser?.id
-        }
-      );
-
-    }
-
-    catch(error){}
-
-
-    try{
-
-      await supabaseClient
-        .removeChannel(
-          voiceChannel
-        );
-
-    }
-
-    catch(error){}
-
+    try{await sendSignal("bye",{from:currentUser?.id});}catch(e){}
+    try{await supabaseClient.removeChannel(voiceChannel);}catch(e){}
   }
-
-
-  voiceChannel = null;
-
-
-  /*
-     Close all peers.
-  */
-
-  peers.forEach(
-    pc => {
-
-      try{
-
-        pc.close();
-
-      }
-
-      catch(error){}
-
-    }
-  );
-
-
-  peers.clear();
-
-  candidateQueues.clear();
-
-
-  remoteStream = null;
-
-
-  const audio =
-    document.getElementById(
-      "remoteAudio"
-    );
-
-
-  if(audio){
-
-    audio.srcObject = null;
-
-  }
-
-
-  /*
-     Stop microphone.
-  */
-
-  if(localStream){
-
-    localStream
-      .getTracks()
-      .forEach(
-        track =>
-          track.stop()
-      );
-
-  }
-
-
-  localStream = null;
-
-  localAudioTrack = null;
-
-
-  pttHeld = false;
-
-  pttStarting = false;
-
-
-  const button =
-    document.getElementById(
-      "pttBtn"
-    );
-
-
-  if(button){
-
-    button.classList.remove(
-      "talking"
-    );
-
-    button.classList.remove(
-      "connecting"
-    );
-
-    button.innerHTML =
-      "PRESS &amp; HOLD<br>TO TALK";
-
-  }
-
+  voiceChannel=null;
+  peers.forEach(pc=>pc.close()); peers.clear(); candidateQueues.clear(); announcedPeers.clear();
+  remoteStream=null;
+  if(localStream){localStream.getTracks().forEach(t=>t.stop());}
+  localStream=null; localAudioTrack=null;
+  const p=document.getElementById("pttBtn");
+  if(p){p.classList.remove("hidden");p.classList.remove("talking");p.innerHTML="PRESS &amp; HOLD<br>TO TALK";}
 }
-
-
-/* =========================================================
-   SESSION CHECK
-   ========================================================= */
 
 async function checkSession(){
-
-  try{
-
-    const {
-      data:{
-        session
+  const {data:{session}}=await supabaseClient.auth.getSession();
+  if(session){
+    showApp(session.user);
+    setTimeout(async()=>{
+      if(!selectedOffice && offices.length){
+        const savedId=localStorage.getItem(ACTIVE_GROUP_KEY);
+        const target=offices.find(o=>String(o.office_id)===String(savedId))||offices[0];
+        if(target) await selectOffice(target);
+      }else if(selectedOffice && !voiceChannel){
+        await connectVoice();
       }
-    } =
-      await supabaseClient
-        .auth
-        .getSession();
-
-
-    if(session){
-
-      await showApp(
-        session.user
-      );
-
-    }
-
+    },1200);
   }
-
-  catch(error){
-
-    console.error(
-      "Session error:",
-      error
-    );
-
-  }
-
 }
-
-
-/* =========================================================
-   AUTH STATE LISTENER
-   ========================================================= */
-
-supabaseClient.auth.onAuthStateChange(
-  async (event,session)=>{
-
-    if(
-      event === "SIGNED_IN" &&
-      session
-    ){
-
-      /*
-         Delay avoids auth callback
-         racing with login.
-      */
-
-      setTimeout(
-        async()=>{
-
-          if(!currentUser){
-
-            await showApp(
-              session.user
-            );
-
-          }
-
-        },
-        50
-      );
-
-    }
-
-
-    if(event === "SIGNED_OUT"){
-
-      currentUser = null;
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   GROUP ADMIN / PLAN
-   ========================================================= */
-
-function isGroupAdmin(
-  office
-){
-
-  return (
-    office &&
-    (
-      office.role === "owner" ||
-      office.role === "admin"
-    )
-  );
-
-}
-
-
-function toggleBusinessFields(){
-
-  const select =
-    document.getElementById(
-      "planSelect"
-    );
-
-
-  const isBusiness =
-    select?.value === "business";
-
-
-  document
-    .getElementById(
-      "customPriceWrap"
-    )
-    ?.classList
-    .toggle(
-      "hidden",
-      !isBusiness
-    );
-
-
-  document
-    .getElementById(
-      "customLimitWrap"
-    )
-    ?.classList
-    .toggle(
-      "hidden",
-      !isBusiness
-    );
-
-}
-
-
-document
-  .getElementById(
-    "planSelect"
-  )
-  ?.addEventListener(
-    "change",
-    toggleBusinessFields
-  );
-
-
-/* =========================================================
-   LOAD GROUP PLAN
-   ========================================================= */
-
-async function loadGroupPlan(){
-
-  if(!selectedOffice){
-
-    return;
-
-  }
-
-
-  const panel =
-    document.getElementById(
-      "groupAdminPanel"
-    );
-
-
-  if(
-    !isGroupAdmin(
-      selectedOffice
-    )
-  ){
-
-    panel.classList.add(
-      "hidden"
-    );
-
-    return;
-
-  }
-
-
-  panel.classList.remove(
-    "hidden"
-  );
-
-
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.rpc(
-      "get_group_plan",
-      {
-        p_group_id:
-          selectedOffice.office_id
-      }
-    );
-
-
-  if(error){
-
-    document
-      .getElementById(
-        "planInfo"
-      )
-      .textContent =
-        "❌ " +
-        error.message;
-
-    return;
-
-  }
-
-
-  const plan =
-    data?.[0];
-
-
-  if(!plan){
-
-    document
-      .getElementById(
-        "planInfo"
-      )
-      .textContent =
-        "Plan information পোৱা নগ'ল।";
-
-    return;
-
-  }
-
-
-  document
-    .getElementById(
-      "planSelect"
-    )
-    .value =
-      plan.plan_code;
-
-
-  document
-    .getElementById(
-      "customPrice"
-    )
-    .value =
-      plan.custom_price ?? "";
-
-
-  document
-    .getElementById(
-      "customLimit"
-    )
-    .value =
-      plan.custom_limit ?? "";
-
-
-  document
-    .getElementById(
-      "planInfo"
-    )
-    .textContent =
-
-      `Current: ${plan.plan_name}
-       • ₹${plan.monthly_price}/month
-       • Maximum users: ${plan.max_users}
-       • Ads: ${plan.ads_enabled ? "ON" : "OFF"}`;
-
-
-  toggleBusinessFields();
-
-}
-
-
-/* =========================================================
-   SAVE GROUP PLAN
-   ========================================================= */
-
-async function saveGroupPlan(){
-
-  if(
-    !selectedOffice ||
-    !isGroupAdmin(
-      selectedOffice
-    )
-  ){
-
-    setStatus(
-      "planStatus",
-      "❌ কেৱল Group Admin-এ plan সলনি কৰিব পাৰে।"
-    );
-
-    return;
-
-  }
-
-
-  const code =
-    document
-      .getElementById(
-        "planSelect"
-      )
-      .value;
-
-
-  let price = null;
-
-  let limit = null;
-
-
-  if(code === "business"){
-
-    price =
-      Number(
-        document
-          .getElementById(
-            "customPrice"
-          )
-          .value
-      );
-
-
-    limit =
-      Number(
-        document
-          .getElementById(
-            "customLimit"
-          )
-          .value
-      );
-
-
-    if(
-      !Number.isFinite(price) ||
-      price < 0
-    ){
-
-      setStatus(
-        "planStatus",
-        "❌ Business monthly charge সঠিককৈ দিয়ক।"
-      );
-
-      return;
-
-    }
-
-
-    if(
-      !Number.isInteger(limit) ||
-      limit < 1
-    ){
-
-      setStatus(
-        "planStatus",
-        "❌ Business user limit সঠিককৈ দিয়ক।"
-      );
-
-      return;
-
-    }
-
-  }
-
-
-  setStatus(
-    "planStatus",
-    "💾 Save কৰি থকা হৈছে..."
-  );
-
-
-  /*
-     Use secure RPC instead of direct
-     group_settings update.
-  */
-
-  const {
-    error
-  } =
-    await supabaseClient.rpc(
-      "set_group_plan",
-      {
-
-        p_group_id:
-          selectedOffice.office_id,
-
-        p_plan_code:
-          code,
-
-        p_custom_price:
-          price,
-
-        p_custom_limit:
-          limit
-
-      }
-    );
-
-
-  if(error){
-
-    setStatus(
-      "planStatus",
-      "❌ Save ব্যর্থ: " +
-      escapeHtml(error.message)
-    );
-
-    return;
-
-  }
-
-
-  setStatus(
-    "planStatus",
-    "✅ Group plan সফলভাৱে update হৈছে।"
-  );
-
-
-  await loadGroupPlan();
-
-}
-
-
-/* =========================================================
-   START APPLICATION
-   ========================================================= */
-
 checkSession();
 
-</script>
 
+function isGroupAdmin(office){return office && (office.role === "owner" || office.role === "admin");}
+function toggleBusinessFields(){const b=document.getElementById("planSelect")?.value==="business";document.getElementById("customPriceWrap")?.classList.toggle("hidden",!b);document.getElementById("customLimitWrap")?.classList.toggle("hidden",!b);}
+document.getElementById("planSelect")?.addEventListener("change",toggleBusinessFields);
+async function loadGroupPlan(){
+ if(!selectedOffice)return; const panel=document.getElementById("groupAdminPanel");
+ if(!isGroupAdmin(selectedOffice)){panel.classList.add("hidden");return;} panel.classList.remove("hidden");
+ const {data,error}=await supabaseClient.rpc("get_group_plan",{p_group_id:selectedOffice.office_id});
+ if(error){document.getElementById("planInfo").textContent="❌ "+error.message;return;}
+ const plan=data?.[0]; if(!plan){document.getElementById("planInfo").textContent="Plan information পোৱা নগ'ল।";return;}
+ document.getElementById("planSelect").value=plan.plan_code; document.getElementById("customPrice").value=plan.custom_price??""; document.getElementById("customLimit").value=plan.custom_limit??"";
+ document.getElementById("planInfo").textContent=`Current: ${plan.plan_name} • ₹${plan.monthly_price}/month • Maximum users: ${plan.max_users} • Ads: ${plan.ads_enabled?"ON":"OFF"}`; toggleBusinessFields();
+}
+async function saveGroupPlan(){
+ if(!selectedOffice||!isGroupAdmin(selectedOffice)){setStatus("planStatus","❌ কেৱল Group Admin-এ plan সলনি কৰিব পাৰে।");return;}
+ const code=document.getElementById("planSelect").value; let price=null,limit=null,ads=(code==="free");
+ if(code==="business"){price=Number(document.getElementById("customPrice").value);limit=Number(document.getElementById("customLimit").value);if(!Number.isFinite(price)||price<0){setStatus("planStatus","❌ Business monthly charge সঠিককৈ দিয়ক।");return;}if(!Number.isInteger(limit)||limit<1){setStatus("planStatus","❌ Business user limit সঠিককৈ দিয়ক।");return;}}
+ setStatus("planStatus","💾 Save কৰি থকা হৈছে...");
+ const {error}=await supabaseClient.rpc("set_group_plan",{p_group_id:selectedOffice.office_id,p_plan_code:code,p_custom_price:price,p_custom_limit:limit});
+ if(error){setStatus("planStatus","❌ Save ব্যর্থ: "+escapeHtml(error.message));return;} setStatus("planStatus","✅ Group plan সফলভাৱে update হৈছে।"); await loadGroupPlan();
+}
+</script>
 </body>
 </html>
