@@ -23,6 +23,7 @@ button.ptt.talking{background:#b83232;transform:scale(1.03)}
 .officeBtn{margin-top:8px;text-align:left;background:#f0f7f8;color:#123c69;border:1px solid #d7e8ea}
 .voiceState{text-align:center;font-weight:bold;font-size:17px}
 </style>
+<style>.planPanel{margin-top:14px;padding:14px;border:1px solid #d7e8ea;border-radius:12px;background:#f8fbfc}.planGrid{display:grid;gap:10px}.adminOnly{border-left:4px solid #123c69}</style>
 </head>
 <body>
 <header><h1>📻 RAJ Walkie Talkie</h1><p>Private Office Communication</p></header>
@@ -66,11 +67,19 @@ button.ptt.talking{background:#b83232;transform:scale(1.03)}
 <h2>📻 Office Voice</h2>
 <div id="selectedOffice" class="small"></div>
 <div id="voiceStatus" class="status voiceState">Voice বন্ধ</div>
-<button id="connectVoiceBtn" onclick="connectVoice()">🎙️ Voice চালু কৰক</button>
 <button id="listenBtn" class="secondary hidden" onclick="enableSpeaker()">🔊 Voice শুনিবলৈ টিপক</button>
 <button id="pttBtn" class="ptt hidden">PRESS & HOLD<br>TO TALK</button>
-<div class="plan">Free MVP: voice over Internet. Future paid plans can be added through Google Play Billing without changing the basic Office/Join system.</div>
+<div class="plan">🎙️ Direct PTT: বুটাম টিপি ধৰি কথা কওক। বুটাম এৰি দিলে কথা বন্ধ হৈ আনসকলে শুনিব পাৰিব।</div>
 <audio id="remoteAudio" autoplay playsinline></audio>
+<div id="groupAdminPanel" class="planPanel adminOnly hidden">
+<h3>👑 Group Admin Panel</h3>
+<div id="planInfo" class="small">Loading plan...</div>
+<div class="planGrid">
+<label>Plan<select id="planSelect"><option value="free">Free — ₹0/month — 10 users — Ads</option><option value="premium">Premium — ₹49/month — 50 users — No Ads</option><option value="business">Business — Custom — No Ads</option></select></label>
+<label id="customPriceWrap" class="hidden">Business monthly charge (₹)<input id="customPrice" type="number" min="0" step="1" placeholder="যেনে 299"></label>
+<label id="customLimitWrap" class="hidden">Business maximum users/group<input id="customLimit" type="number" min="1" step="1" placeholder="যেনে 100"></label>
+<button onclick="saveGroupPlan()">💾 Save Group Plan</button><div id="planStatus" class="status"></div>
+</div></div>
 </div>
 </section>
 </main>
@@ -186,6 +195,7 @@ function selectOffice(office){
   document.getElementById("voiceCard").classList.remove("hidden");
   document.getElementById("selectedOffice").textContent="Selected: "+office.office_name;
   document.getElementById("pttBtn").classList.remove("hidden");
+  loadGroupPlan();
 }
 
 async function connectVoice(){
@@ -197,9 +207,7 @@ async function connectVoice(){
     return true;
   }
 
-  const btn=document.getElementById("connectVoiceBtn");
-  btn.disabled=true;
-  btn.textContent="🎙️ Voice আৰম্ভ...";
+  const btn=document.getElementById("pttBtn");
 
   try{
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -252,8 +260,8 @@ async function connectVoice(){
 
     return true;
   }catch(e){
-    btn.disabled=false;
-    btn.textContent="🎙️ Voice চালু কৰক";
+    btn.classList.remove("talking");
+    btn.innerHTML="PRESS & HOLD<br>TO TALK";
     if(localStream){
       localStream.getTracks().forEach(t=>t.stop());
       localStream=null;
@@ -585,6 +593,28 @@ async function checkSession(){
   if(session) showApp(session.user);
 }
 checkSession();
+
+
+function isGroupAdmin(office){return office && (office.role === "owner" || office.role === "admin");}
+function toggleBusinessFields(){const b=document.getElementById("planSelect")?.value==="business";document.getElementById("customPriceWrap")?.classList.toggle("hidden",!b);document.getElementById("customLimitWrap")?.classList.toggle("hidden",!b);}
+document.getElementById("planSelect")?.addEventListener("change",toggleBusinessFields);
+async function loadGroupPlan(){
+ if(!selectedOffice)return; const panel=document.getElementById("groupAdminPanel");
+ if(!isGroupAdmin(selectedOffice)){panel.classList.add("hidden");return;} panel.classList.remove("hidden");
+ const {data,error}=await supabaseClient.rpc("get_group_plan",{p_group_id:selectedOffice.office_id});
+ if(error){document.getElementById("planInfo").textContent="❌ "+error.message;return;}
+ const plan=data?.[0]; if(!plan){document.getElementById("planInfo").textContent="Plan information পোৱা নগ'ল।";return;}
+ document.getElementById("planSelect").value=plan.plan_code; document.getElementById("customPrice").value=plan.custom_price??""; document.getElementById("customLimit").value=plan.custom_limit??"";
+ document.getElementById("planInfo").textContent=`Current: ${plan.plan_name} • ₹${plan.monthly_price}/month • Maximum users: ${plan.max_users} • Ads: ${plan.ads_enabled?"ON":"OFF"}`; toggleBusinessFields();
+}
+async function saveGroupPlan(){
+ if(!selectedOffice||!isGroupAdmin(selectedOffice)){setStatus("planStatus","❌ কেৱল Group Admin-এ plan সলনি কৰিব পাৰে।");return;}
+ const code=document.getElementById("planSelect").value; let price=null,limit=null,ads=(code==="free");
+ if(code==="business"){price=Number(document.getElementById("customPrice").value);limit=Number(document.getElementById("customLimit").value);if(!Number.isFinite(price)||price<0){setStatus("planStatus","❌ Business monthly charge সঠিককৈ দিয়ক।");return;}if(!Number.isInteger(limit)||limit<1){setStatus("planStatus","❌ Business user limit সঠিককৈ দিয়ক।");return;}}
+ setStatus("planStatus","💾 Save কৰি থকা হৈছে...");
+ const {error}=await supabaseClient.from("group_settings").update({plan_code:code,custom_monthly_price:price,custom_user_limit:limit,ads_enabled:ads,updated_at:new Date().toISOString()}).eq("group_id",selectedOffice.office_id);
+ if(error){setStatus("planStatus","❌ Save ব্যর্থ: "+escapeHtml(error.message));return;} setStatus("planStatus","✅ Group plan সফলভাৱে update হৈছে।"); await loadGroupPlan();
+}
 </script>
 </body>
 </html>
