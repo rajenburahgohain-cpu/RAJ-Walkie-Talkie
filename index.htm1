@@ -21,7 +21,7 @@ button.ptt.talking{background:#b83232;transform:scale(1.03)}
 .member{padding:12px;border-bottom:1px solid #eee}.small{font-size:13px;color:#667}
 .plan{font-size:13px;color:#53606b;background:#f7fafc;padding:10px;border-radius:10px}
 .officeBtn{margin-top:8px;text-align:left;background:#f0f7f8;color:#123c69;border:1px solid #d7e8ea}
-.voiceState{text-align:center;font-weight:bold;font-size:17px}
+.voiceState{text-align:center;font-weight:bold;font-size:17px}.selectedOfficeHint{outline:3px solid #087f8c}
 </style>
 <style>.planPanel{margin-top:14px;padding:14px;border:1px solid #d7e8ea;border-radius:12px;background:#f8fbfc}.planGrid{display:grid;gap:10px}.adminOnly{border-left:4px solid #123c69}</style>
 </head>
@@ -66,10 +66,10 @@ button.ptt.talking{background:#b83232;transform:scale(1.03)}
 <div id="voiceCard" class="card hidden">
 <h2>📻 Office Voice</h2>
 <div id="selectedOffice" class="small"></div>
-<div id="voiceStatus" class="status voiceState">Voice বন্ধ</div>
+<div id="voiceStatus" class="status voiceState">প্ৰথমে আপোনাৰ Office-টো টিপি বাছক</div>
 <button id="listenBtn" class="secondary hidden" onclick="enableSpeaker()">🔊 Voice শুনিবলৈ টিপক</button>
 <button id="pttBtn" class="ptt hidden">PRESS & HOLD<br>TO TALK</button>
-<div class="plan">🎙️ Direct PTT: বুটাম টিপি ধৰি কথা কওক। বুটাম এৰি দিলে কথা বন্ধ হৈ আনসকলে শুনিব পাৰিব।</div>
+<div class="plan">🎙️ <b>Direct PTT:</b> Office-টো এবাৰ টিপি বাছিলেই voice connection আৰম্ভ হ’ব। <b>PRESS &amp; HOLD TO TALK</b> টিপি ধৰি কথা কওক। এৰি দিলে কথা বন্ধ হ’ব। আন connected ফোনে শুনিব।</div>
 <audio id="remoteAudio" autoplay playsinline></audio>
 <div id="groupAdminPanel" class="planPanel adminOnly hidden">
 <h3>👑 Group Admin Panel</h3>
@@ -186,16 +186,25 @@ async function loadOffices(){
     code.className="code"; code.textContent=office.link_code;
     div.appendChild(code);
     list.appendChild(div);
-    if(index===0 && !selectedOffice) selectOffice(office);
+    if(index===0 && !selectedOffice){
+      b.classList.add("selectedOfficeHint");
+      setVoiceState("👆 আপোনাৰ Office-টো টিপি বাছক — তাৰ পিছত আনৰ কথা শুনিব পাৰিব");
+    }
   });
 }
 
-function selectOffice(office){
+async function selectOffice(office){
+  if(selectedOffice?.office_id!==office.office_id){
+    await disconnectVoice();
+  }
   selectedOffice=office;
   document.getElementById("voiceCard").classList.remove("hidden");
   document.getElementById("selectedOffice").textContent="Selected: "+office.office_name;
   document.getElementById("pttBtn").classList.remove("hidden");
   loadGroupPlan();
+  // No separate Voice-start button: selecting the group connects voice
+  // so this phone can receive audio before anyone presses PTT.
+  await connectVoice();
 }
 
 async function connectVoice(){
@@ -206,8 +215,6 @@ async function connectVoice(){
   if(voiceChannel && localStream){
     return true;
   }
-
-  const btn=document.getElementById("pttBtn");
 
   try{
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -239,7 +246,6 @@ async function connectVoice(){
     voiceChannel.subscribe(async status=>{
       if(status==="SUBSCRIBED"){
         setVoiceState("🟢 Voice connected — PTT ready");
-        btn.classList.add("hidden");
         document.getElementById("pttBtn").classList.remove("hidden");
 
         await sendSignal("hello",{from:currentUser.id});
@@ -254,14 +260,14 @@ async function connectVoice(){
       }else if(status==="CHANNEL_ERROR" || status==="TIMED_OUT"){
         setVoiceState("❌ Voice channel connection failed");
         btn.disabled=false;
-        btn.textContent="🎙️ Voice পুনৰ চালু কৰক";
+        
       }
     });
 
     return true;
   }catch(e){
-    btn.classList.remove("talking");
-    btn.innerHTML="PRESS & HOLD<br>TO TALK";
+    document.getElementById("pttBtn").classList.remove("talking");
+    document.getElementById("pttBtn").innerHTML="PRESS & HOLD<br>TO TALK";
     if(localStream){
       localStream.getTracks().forEach(t=>t.stop());
       localStream=null;
@@ -582,8 +588,6 @@ async function disconnectVoice(){
   if(listenBtn) listenBtn.classList.add("hidden");
   if(localStream){localStream.getTracks().forEach(t=>t.stop());}
   localStream=null; localAudioTrack=null;
-  const btn=document.getElementById("connectVoiceBtn");
-  if(btn){btn.classList.remove("hidden");btn.disabled=false;btn.textContent="🎙️ Voice চালু কৰক";}
   const p=document.getElementById("pttBtn");
   if(p){p.classList.add("hidden");p.classList.remove("talking");p.innerHTML="PRESS & HOLD<br>TO TALK";}
 }
