@@ -1,0 +1,90 @@
+name: Build RAJ Walkie Talkie Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Extract Native Android Project
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f \
+            -name 'RAJ-Walkie-Talkie-Native-Android-Starter.zip' \
+            -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Native Android ZIP file was not found."
+            exit 1
+          fi
+
+          mkdir -p .native_project
+          unzip -o "$ZIP_FILE" -d .native_project
+
+          cp -f .native_project/build.gradle.kts .
+          cp -f .native_project/settings.gradle.kts .
+          cp -f .native_project/gradle.properties .
+
+          rm -rf app
+          cp -rf .native_project/app .
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.9
+
+      - name: Build Debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAJ-Walkie-Talkie-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Commit Android Project
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            app \
+            build.gradle.kts \
+            settings.gradle.kts \
+            gradle.properties \
+            gradlew \
+            gradlew.bat \
+            gradle \
+            2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "No Android project changes to commit."
+          else
+            git commit -m "Add native Android project structure"
+            git push
+          fi
