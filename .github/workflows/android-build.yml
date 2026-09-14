@@ -21,70 +21,66 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Extract Native Android Project
+      - name: Find and Extract Native Android Project
         shell: bash
         run: |
           set -e
 
           ZIP_FILE=$(find . -maxdepth 1 -type f \
-            -name 'RAJ-Walkie-Talkie-Native-Android-Starter-FIXED.zip' \
+            -name 'RAJ-Walkie-Talkie-Native-Android-Starter-FINAL.zip' \
             -print -quit)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: Native Android ZIP file was not found."
+            echo "ERROR: RAJ-Walkie-Talkie-Native-Android-Starter-FINAL.zip was not found."
+            echo "Files in repository:"
+            ls -la
             exit 1
           fi
 
-          mkdir -p .native_project
-          unzip -o "$ZIP_FILE" -d .native_project
+          echo "Found ZIP: $ZIP_FILE"
 
-          cp -f .native_project/build.gradle.kts .
-          cp -f .native_project/settings.gradle.kts .
-          cp -f .native_project/gradle.properties .
+          rm -rf native_project
+          mkdir -p native_project
 
-          rm -rf app
-          cp -rf .native_project/app .
+          unzip -q "$ZIP_FILE" -d native_project
+
+          echo "Extracted files:"
+          find native_project -maxdepth 3 -type f | head -100
+
+          PROJECT_DIR=$(find native_project -type f -name 'settings.gradle.kts' -o -name 'settings.gradle' | head -1 | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project was not found."
+            exit 1
+          fi
+
+          echo "Android project found at: $PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Generate Gradle Wrapper
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
         run: |
+          set -e
           gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
 
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
         run: |
-          chmod +x gradlew
+          set -e
           ./gradlew assembleDebug --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: RAJ-Walkie-Talkie-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-      - name: Commit Android Project
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add \
-            app \
-            build.gradle.kts \
-            settings.gradle.kts \
-            gradle.properties \
-            gradlew \
-            gradlew.bat \
-            gradle \
-            2>/dev/null || true
-
-          if git diff --cached --quiet; then
-            echo "No Android project changes to commit."
-          else
-            git commit -m "Add native Android project structure"
-            git push
-          fi
