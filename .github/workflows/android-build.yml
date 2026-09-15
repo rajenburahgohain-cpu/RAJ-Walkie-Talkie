@@ -29,11 +29,11 @@ jobs:
           set -e
 
           ZIP_FILE=$(find . -maxdepth 1 -type f \
-            -name 'RAJ-Walkie-Talkie-Native-Android-Starter-FINAL.zip' \
+            -name 'RAJ-Walkie-Talkie-Native-Android-Starter-FIXED.zip' \
             -print -quit)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: RAJ-Walkie-Talkie-Native-Android-Starter-FINAL.zip was not found."
+            echo "ERROR: RAJ-Walkie-Talkie-Native-Android-Starter-FIXED.zip was not found."
             echo "Files in repository:"
             ls -la
             exit 1
