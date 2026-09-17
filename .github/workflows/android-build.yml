@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -74,11 +75,12 @@ jobs:
           p = Path("app/build.gradle.kts")
 
           if not p.exists():
-              print("app/build.gradle.kts not found. Skipping fix.")
-              raise SystemExit(0)
+              print("ERROR: app/build.gradle.kts not found.")
+              raise SystemExit(1)
 
           text = p.read_text(encoding="utf-8")
 
+          # Remove misplaced compileOptions block
           text = re.sub(
               r'(?ms)^\s*compileOptions\s*\{.*?\}\s*',
               '',
@@ -86,6 +88,7 @@ jobs:
               count=1
           )
 
+          # Remove old kotlinOptions block
           text = re.sub(
               r'(?ms)^\s*kotlinOptions\s*\{.*?\}\s*',
               '',
@@ -94,7 +97,48 @@ jobs:
           )
 
           p.write_text(text, encoding="utf-8")
-          print("Gradle configuration fixed.")
+
+          print("Gradle Kotlin DSL configuration fixed.")
+          PY
+
+      - name: Force Java and Kotlin JVM target 17
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -e
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("app/build.gradle.kts")
+          text = p.read_text(encoding="utf-8")
+
+          block = r'''
+
+          // CI JVM compatibility fix
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              compilerOptions {
+                  jvmTarget.set(
+                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                  )
+              }
+          }
+          '''
+
+          # Add only once
+          if "CI JVM compatibility fix" not in text:
+              text += block
+
+          p.write_text(text, encoding="utf-8")
+
+          print("Java and Kotlin JVM targets set to 17.")
           PY
 
       - name: Setup Gradle
@@ -105,6 +149,7 @@ jobs:
         shell: bash
         run: |
           set -e
+
           gradle wrapper --gradle-version 8.9
           chmod +x gradlew
 
@@ -113,7 +158,25 @@ jobs:
         shell: bash
         run: |
           set -e
+
           ./gradlew assembleDebug --stacktrace
+
+      - name: Check APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -e
+
+          echo "Searching for APK..."
+          find app/build/outputs/apk -type f -name "*.apk" -print
+
+          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "ERROR: Debug APK was not generated."
+            exit 1
+          fi
+
+          echo "APK successfully generated."
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
