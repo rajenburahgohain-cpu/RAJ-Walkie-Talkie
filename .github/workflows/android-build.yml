@@ -26,12 +26,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Find and extract Play Store project
+      - name: Find and extract WebView Voice Fix project
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_FILE="./RAJ-Walkie-Talkie-PLAY-STORE-READY.zip"
+          ZIP_FILE="./RAJ-Walkie-Talkie-WebView-VOICE-FIX.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: $ZIP_FILE not found."
@@ -39,22 +39,21 @@ jobs:
             exit 1
           fi
 
-          rm -rf play_project
-          mkdir -p play_project
+          rm -rf webview_project
+          mkdir -p webview_project
 
-          unzip -q "$ZIP_FILE" -d play_project
+          unzip -q "$ZIP_FILE" -d webview_project
 
-          PROJECT_DIR="$(find play_project -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
+          PROJECT_DIR="$(find webview_project -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: settings.gradle.kts not found."
-            find play_project -maxdepth 5 -type f -print
+            find webview_project -maxdepth 5 -type f -print
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Using Android project: $PROJECT_DIR"
-
+          echo "Using WebView Android project: $PROJECT_DIR"
       - name: Validate project source
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
