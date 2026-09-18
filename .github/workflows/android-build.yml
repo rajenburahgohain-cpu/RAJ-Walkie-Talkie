@@ -7,180 +7,122 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  GRADLE_VERSION: "8.13"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Find and Extract Native Android Project
+      - name: Find and extract Play Store project
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f \
-            -name 'RAJ-Walkie-Talkie-Native-Android-Starter-FIXED.zip' \
-            -print -quit)
+          ZIP_FILE="./RAJ-Walkie-Talkie-PLAY-STORE-READY.zip"
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: RAJ-Walkie-Talkie-Native-Android-Starter-FIXED.zip was not found."
-            echo "Files in repository:"
-            ls -la
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: $ZIP_FILE not found."
+            ls -lah
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP_FILE"
+          rm -rf play_project
+          mkdir -p play_project
 
-          rm -rf native_project
-          mkdir -p native_project
+          unzip -q "$ZIP_FILE" -d play_project
 
-          unzip -q "$ZIP_FILE" -d native_project
-
-          echo "Extracted files:"
-          find native_project -maxdepth 3 -type f | head -100
-
-          PROJECT_DIR=$(find native_project -type f \
-            \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) \
-            -print -quit | xargs -r dirname)
+          PROJECT_DIR="$(find play_project -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android Gradle project was not found."
+            echo "ERROR: settings.gradle.kts not found."
+            find play_project -maxdepth 5 -type f -print
             exit 1
           fi
 
-          echo "Android project found at: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Using Android project: $PROJECT_DIR"
 
-      - name: Fix Android Gradle Kotlin DSL configuration
+      - name: Validate project source
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/raj/walkietalkie/MainActivity.java
 
-          p = Path("app/build.gradle.kts")
+          echo "MainActivity:"
+          sed -n '1,220p' app/src/main/java/com/raj/walkietalkie/MainActivity.java
 
-          if not p.exists():
-              print("ERROR: app/build.gradle.kts not found.")
-              raise SystemExit(1)
+          echo "Application Gradle configuration:"
+          grep -E 'compileSdk|targetSdk|versionCode|versionName|applicationId' app/build.gradle.kts
 
-          text = p.read_text(encoding="utf-8")
-
-          # Remove misplaced compileOptions block
-          text = re.sub(
-              r'(?ms)^\s*compileOptions\s*\{.*?\}\s*',
-              '',
-              text,
-              count=1
-          )
-
-          # Remove old kotlinOptions block
-          text = re.sub(
-              r'(?ms)^\s*kotlinOptions\s*\{.*?\}\s*',
-              '',
-              text,
-              count=1
-          )
-
-          p.write_text(text, encoding="utf-8")
-
-          print("Gradle Kotlin DSL configuration fixed.")
-          PY
-
-      - name: Force Java and Kotlin JVM target 17
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -e
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path("app/build.gradle.kts")
-          text = p.read_text(encoding="utf-8")
-
-          block = r'''
-
-          // CI JVM compatibility fix
-          android {
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-          }
-
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-              compilerOptions {
-                  jvmTarget.set(
-                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-                  )
-              }
-          }
-          '''
-
-          # Add only once
-          if "CI JVM compatibility fix" not in text:
-              text += block
-
-          p.write_text(text, encoding="utf-8")
-
-          print("Java and Kotlin JVM targets set to 17.")
-          PY
-
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Generate Gradle Wrapper
+      - name: Generate Gradle wrapper
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          gradle wrapper --gradle-version 8.9
+          gradle wrapper \
+            --gradle-version "$GRADLE_VERSION" \
+            --distribution-type bin
+
           chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
-          set -e
-
           ./gradlew assembleDebug --stacktrace
 
-      - name: Check APK
+      - name: Build release AAB
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
-          set -e
+          ./gradlew bundleRelease --stacktrace
 
-          echo "Searching for APK..."
-          find app/build/outputs/apk -type f -name "*.apk" -print
+      - name: Verify outputs
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "ERROR: Debug APK was not generated."
-            exit 1
-          fi
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/bundle/release/app-release.aab
 
-          echo "APK successfully generated."
+          echo "DEBUG APK:"
           ls -lh app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload Debug APK
+          echo "RELEASE AAB:"
+          ls -lh app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-debug
+          name: RAJ-Walkie-Talkie-PlayReady-debug
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAJ-Walkie-Talkie-PlayReady-release-AAB
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
