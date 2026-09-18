@@ -573,10 +573,33 @@ function stopTalking(e){
 
 const ptt=document.getElementById("pttBtn");
 
-ptt.addEventListener("pointerdown",startTalking,{passive:false});
-["pointerup","pointercancel","pointerleave"].forEach(ev=>{
-  ptt.addEventListener(ev,stopTalking,{passive:false});
-});
+ptt.addEventListener("pointerdown",async e=>{
+  e.preventDefault();
+
+  try{
+    ptt.setPointerCapture(e.pointerId);
+  }catch(err){}
+
+  await startTalking(e);
+},{passive:false});
+
+ptt.addEventListener("pointerup",e=>{
+  e.preventDefault();
+
+  try{
+    if(ptt.hasPointerCapture(e.pointerId)){
+      ptt.releasePointerCapture(e.pointerId);
+    }
+  }catch(err){}
+
+  stopTalking(e);
+},{passive:false});
+
+ptt.addEventListener("pointercancel",e=>{
+  e.preventDefault();
+  stopTalking(e);
+},{passive:false});
+
 ptt.addEventListener("contextmenu",e=>e.preventDefault());
 
 async function disconnectVoice(){
