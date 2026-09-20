@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_FILE="./RAJ-Walkie-Talkie-V6-LIVE-ADMIN-REALTIME.zip""
+          ZIP_FILE="./RAJ-Walkie-Talkie-V6-LIVE-ADMIN-REALTIME.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: $ZIP_FILE not found."
