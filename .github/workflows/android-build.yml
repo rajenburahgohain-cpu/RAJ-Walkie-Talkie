@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_FILE="./RAJ-Walkie-Talkie-V6-LIVE-ADMIN-REALTIME-FIXED.zip"
+          ZIP_FILE="./RAJ-Walkie-Talkie-V10-LIVE-ADMIN-REALTIME-FIXED.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: $ZIP_FILE not found."
@@ -96,7 +96,7 @@ jobs:
           echo "minSdk compatibility fix completed."
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.13"
 
