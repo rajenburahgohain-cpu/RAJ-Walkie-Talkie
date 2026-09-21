@@ -26,12 +26,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Find and extract WebView Voice Fix project
+      - name: Find and extract V10 Voice First project
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_FILE="./RAJ-Walkie-Talkie-V10-LIVE-ADMIN-REALTIME-FIXED.zip"
+          ZIP_FILE="./RAJ-Walkie-Talkie-V10-VOICE-FIRST-FIX.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: $ZIP_FILE not found."
@@ -64,10 +64,10 @@ jobs:
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/raj/walkietalkie/MainActivity.java
+          test -f app/src/main/assets/index.html
 
           echo "Project files validated."
 
-          echo "Current Android configuration:"
           grep -E 'compileSdk|targetSdk|minSdk|versionCode|versionName|applicationId' \
             app/build.gradle.kts || true
 
@@ -77,40 +77,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Checking minSdk before fix:"
-          grep -n "minSdk" app/build.gradle.kts || true
-
-          # androidx.webkit:webkit:1.17.0 requires API 24.
-          # Change minSdk 23 -> 24.
           sed -i -E 's/(minSdk[[:space:]]*=[[:space:]]*)23/\124/g' \
             app/build.gradle.kts
 
-          echo "Checking minSdk after fix:"
+          echo "Final minSdk:"
           grep -n "minSdk" app/build.gradle.kts || true
 
-          if grep -Eq 'minSdk[[:space:]]*=[[:space:]]*23' app/build.gradle.kts; then
-            echo "ERROR: minSdk is still 23."
-            exit 1
-          fi
-
-          echo "minSdk compatibility fix completed."
-
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.13"
-
-      - name: Generate Gradle wrapper
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          gradle wrapper \
-            --gradle-version "$GRADLE_VERSION" \
-            --distribution-type bin
-
-          chmod +x gradlew
 
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -118,7 +94,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ./gradlew clean assembleDebug --stacktrace
+          gradle clean assembleDebug --stacktrace --no-daemon
 
       - name: Build release AAB
         working-directory: ${{ env.PROJECT_DIR }}
@@ -126,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ./gradlew bundleRelease --stacktrace
+          gradle bundleRelease --stacktrace --no-daemon
 
       - name: Verify outputs
         working-directory: ${{ env.PROJECT_DIR }}
@@ -134,29 +110,38 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          test -f app/build/outputs/bundle/release/app-release.aab
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
 
-          echo "======================================"
-          echo "DEBUG APK"
-          echo "======================================"
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          test -f "$AAB"
 
-          echo "======================================"
-          echo "RELEASE AAB"
-          echo "======================================"
-          ls -lh app/build/outputs/bundle/release/app-release.aab
+          APK_SIZE=$(stat -c%s "$APK")
+          AAB_SIZE=$(stat -c%s "$AAB")
+
+          echo "DEBUG APK size: $APK_SIZE bytes"
+          echo "RELEASE AAB size: $AAB_SIZE bytes"
+
+          if [ "$APK_SIZE" -lt 100000 ]; then
+            echo "ERROR: APK is suspiciously small."
+            exit 1
+          fi
+
+          if [ "$AAB_SIZE" -lt 100000 ]; then
+            echo "ERROR: AAB is suspiciously small."
+            exit 1
+          fi
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-DEBUG-APK
+          name: RAJ-Walkie-Talkie-V10-DEBUG-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Upload release AAB
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-RELEASE-AAB
+          name: RAJ-Walkie-Talkie-V10-RELEASE-AAB
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
