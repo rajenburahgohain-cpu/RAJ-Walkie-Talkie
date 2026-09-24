@@ -17,39 +17,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract V11 Android Project
+      - name: Extract Final V11 ZIP
         shell: bash
         run: |
           set -e
 
-          ZIP="RAJ-Walkie-Talkie-V11-PLAY-STORE-PREP-GOOGLE-CALL-RECONNECT.zip"
+          ZIP="RAJ-Walkie-Talkie-V11-FINAL-CONNECTION-SETTINGS.zip"
 
-          echo "Checking V11 ZIP..."
           test -f "$ZIP"
 
           rm -rf v11-extracted android-v11
           mkdir -p v11-extracted android-v11
 
-          echo "Extracting V11 ZIP..."
           unzip -q "$ZIP" -d v11-extracted
-
-          echo "Finding Android Gradle project..."
 
           PROJECT_DIR="$(find v11-extracted -type f -name 'settings.gradle.kts' -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: settings.gradle.kts not found."
-            find v11-extracted -maxdepth 5 -type f | head -200
+            echo "ERROR: Android Gradle project not found"
             exit 1
           fi
 
-          echo "Android project found at:"
-          echo "$PROJECT_DIR"
-
           cp -a "$PROJECT_DIR"/. android-v11/
 
-          echo "V11 project prepared:"
+          echo "Project:"
           ls -la android-v11
+
+          echo "minSdk:"
+          grep -n "minSdk" android-v11/app/build.gradle.kts
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -57,23 +52,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.13
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.13'
-
-      - name: Check Gradle Project
-        working-directory: android-v11
-        run: |
-          echo "Gradle version:"
-          gradle --version
-
-          echo "Project files:"
-          ls -la
-
-          test -f settings.gradle.kts
-          test -f build.gradle.kts
-          test -d app
 
       - name: Build Debug APK
         working-directory: android-v11
@@ -85,28 +67,23 @@ jobs:
         run: |
           gradle bundleRelease --no-daemon --stacktrace
 
-      - name: Verify V11 Outputs
+      - name: Verify Outputs
         working-directory: android-v11
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
           test -f app/build/outputs/bundle/release/app-release.aab
 
-          echo "DEBUG APK:"
           ls -lh app/build/outputs/apk/debug/app-debug.apk
-
-          echo "RELEASE AAB:"
           ls -lh app/build/outputs/bundle/release/app-release.aab
 
-      - name: Upload V11 APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: RAJ-Walkie-Talkie-V11-DEBUG-APK
           path: android-v11/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
 
-      - name: Upload V11 AAB
+      - name: Upload Release AAB
         uses: actions/upload-artifact@v4
         with:
           name: RAJ-Walkie-Talkie-V11-RELEASE-AAB
           path: android-v11/app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: error
