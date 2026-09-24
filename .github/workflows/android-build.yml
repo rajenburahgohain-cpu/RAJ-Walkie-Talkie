@@ -1,4 +1,4 @@
-name: Android Build
+name: RAJ Walkie Talkie V11
 
 on:
   workflow_dispatch:
@@ -9,139 +9,50 @@ on:
 permissions:
   contents: read
 
-env:
-  GRADLE_VERSION: "8.13"
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: android-v11
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
-
-      - name: Find and extract V10 Voice First project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ZIP_FILE="./RAJ-Walkie-Talkie-V10-VOICE-FIRST-FIX.zip"
-
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: $ZIP_FILE not found."
-            ls -lah
-            exit 1
-          fi
-
-          rm -rf webview_project
-          mkdir -p webview_project
-
-          unzip -q "$ZIP_FILE" -d webview_project
-
-          PROJECT_DIR="$(find webview_project -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: settings.gradle.kts not found."
-            find webview_project -maxdepth 5 -type f -print
-            exit 1
-          fi
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Using Android project: $PROJECT_DIR"
-
-      - name: Validate project source
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          test -f app/build.gradle.kts
-          test -f app/src/main/AndroidManifest.xml
-          test -f app/src/main/java/com/raj/walkietalkie/MainActivity.java
-          test -f app/src/main/assets/index.html
-
-          echo "Project files validated."
-
-          grep -E 'compileSdk|targetSdk|minSdk|versionCode|versionName|applicationId' \
-            app/build.gradle.kts || true
-
-      - name: Fix WebKit minSdk compatibility
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          sed -i -E 's/(minSdk[[:space:]]*=[[:space:]]*)23/\124/g' \
-            app/build.gradle.kts
-
-          echo "Final minSdk:"
-          grep -n "minSdk" app/build.gradle.kts || true
+          java-version: '17'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.13"
+          gradle-version: '8.13'
 
-      - name: Build debug APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
+      - name: Build Debug APK
+        run: gradle clean assembleDebug --no-daemon --stacktrace
+
+      - name: Build Release AAB
+        run: gradle bundleRelease --no-daemon --stacktrace
+
+      - name: Verify V11 outputs
         run: |
-          set -euo pipefail
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/bundle/release/app-release.aab
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/bundle/release/app-release.aab
 
-          gradle clean assembleDebug --stacktrace --no-daemon
-
-      - name: Build release AAB
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          gradle bundleRelease --stacktrace --no-daemon
-
-      - name: Verify outputs
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          AAB="app/build/outputs/bundle/release/app-release.aab"
-
-          test -f "$APK"
-          test -f "$AAB"
-
-          APK_SIZE=$(stat -c%s "$APK")
-          AAB_SIZE=$(stat -c%s "$AAB")
-
-          echo "DEBUG APK size: $APK_SIZE bytes"
-          echo "RELEASE AAB size: $AAB_SIZE bytes"
-
-          if [ "$APK_SIZE" -lt 100000 ]; then
-            echo "ERROR: APK is suspiciously small."
-            exit 1
-          fi
-
-          if [ "$AAB_SIZE" -lt 100000 ]; then
-            echo "ERROR: AAB is suspiciously small."
-            exit 1
-          fi
-
-      - name: Upload debug APK
+      - name: Upload V11 APK
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V10-DEBUG-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: RAJ-Walkie-Talkie-V11-DEBUG-APK
+          path: android-v11/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload release AAB
+      - name: Upload V11 AAB
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V10-RELEASE-AAB
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: error
+          name: RAJ-Walkie-Talkie-V11-RELEASE-AAB
+          path: android-v11/app/build/outputs/bundle/release/app-release.aab
