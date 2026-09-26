@@ -20,7 +20,7 @@ jobs:
       - name: Extract Verified Final V11 ZIP
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           ZIP="RAJ-Walkie-Talkie-V11-FINAL-CONNECTION-SETTINGS-VERIFIED-FIX-2026-09-24.zip"
 
@@ -51,17 +51,56 @@ jobs:
           echo "Project files:"
           ls -la android-v11
 
-          echo "Checking minSdk:"
-          grep -n "minSdk" android-v11/app/build.gradle.kts
+      - name: Force Android API 36
+        working-directory: android-v11
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          echo "Checking source for old build errors..."
+          BUILD_FILE="app/build.gradle.kts"
 
-          if grep -R "Settings.ACTION_TETHER_SETTINGS" -n android-v11/app/src/main/java; then
+          test -f "$BUILD_FILE"
+
+          echo "Original SDK configuration:"
+          grep -nE "compileSdk|targetSdk|minSdk" "$BUILD_FILE" || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path("app/build.gradle.kts")
+          s = p.read_text(encoding="utf-8")
+
+          s = re.sub(
+              r'(?m)^(\s*compileSdk\s*=\s*).*$',
+              r'\g<1>36',
+              s
+          )
+
+          s = re.sub(
+              r'(?m)^(\s*targetSdk\s*=\s*).*$',
+              r'\g<1>36',
+              s
+          )
+
+          p.write_text(s, encoding="utf-8")
+          PY
+
+          echo "Updated SDK configuration:"
+          grep -nE "compileSdk|targetSdk|minSdk" "$BUILD_FILE" || true
+
+      - name: Check Source
+        working-directory: android-v11
+        shell: bash
+        run: |
+          set -e
+
+          if grep -R "Settings.ACTION_TETHER_SETTINGS" -n app/src/main/java; then
             echo "ERROR: Old ACTION_TETHER_SETTINGS reference still exists."
             exit 1
           fi
 
-          if grep -R "BillingClient.BillingClientStateListener" -n android-v11/app/src/main/java; then
+          if grep -R "BillingClient.BillingClientStateListener" -n app/src/main/java; then
             echo "ERROR: Old nested BillingClientStateListener reference still exists."
             exit 1
           fi
@@ -79,6 +118,24 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Decode Release Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "ERROR: KEYSTORE_BASE64 secret is missing."
+            exit 1
+          fi
+
+          echo "$KEYSTORE_BASE64" | base64 --decode > android-v11/release-upload.jks
+
+          test -s android-v11/release-upload.jks
+
+          echo "Keystore decoded successfully."
+
       - name: Build Debug APK
         working-directory: android-v11
         run: |
@@ -89,17 +146,61 @@ jobs:
         run: |
           gradle bundleRelease --no-daemon --stacktrace
 
+      - name: Sign Release AAB
+        working-directory: android-v11
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+
+          test -f "$AAB"
+
+          jarsigner \
+            -keystore release-upload.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -signedjar app/build/outputs/bundle/release/app-release-signed.aab \
+            "$AAB" \
+            "$KEY_ALIAS"
+
+          test -f app/build/outputs/bundle/release/app-release-signed.aab
+
+          echo "Release AAB signed successfully."
+
+      - name: Verify Release AAB
+        working-directory: android-v11
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jarsigner \
+            -verify \
+            -verbose \
+            -certs \
+            app/build/outputs/bundle/release/app-release-signed.aab
+
+          echo "AAB signature verification passed."
+
       - name: Verify Outputs
         working-directory: android-v11
         run: |
+          set -e
+
           test -f app/build/outputs/apk/debug/app-debug.apk
-          test -f app/build/outputs/bundle/release/app-release.aab
+          test -f app/build/outputs/bundle/release/app-release-signed.aab
 
           echo "DEBUG APK:"
           ls -lh app/build/outputs/apk/debug/app-debug.apk
 
-          echo "RELEASE AAB:"
-          ls -lh app/build/outputs/bundle/release/app-release.aab
+          echo "SIGNED RELEASE AAB:"
+          ls -lh app/build/outputs/bundle/release/app-release-signed.aab
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -108,9 +209,15 @@ jobs:
           path: android-v11/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload Release AAB
+      - name: Upload Signed Release AAB
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V11-RELEASE-AAB
-          path: android-v11/app/build/outputs/bundle/release/app-release.aab
+          name: RAJ-Walkie-Talkie-V11-SIGNED-RELEASE-AAB
+          path: android-v11/app/build/outputs/bundle/release/app-release-signed.aab
           if-no-files-found: error
+
+      - name: Cleanup Keystore
+        if: always()
+        shell: bash
+        run: |
+          rm -f android-v11/release-upload.jks
