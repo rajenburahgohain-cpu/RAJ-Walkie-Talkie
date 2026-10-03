@@ -13,30 +13,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      V12_ZIP: RAJ-Walkie-Talkie-V12-FINAL-ALL-FIXED.zip
+
     steps:
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find V12 ZIP
+      - name: Verify V12 ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_FILE="RAJ-Walkie-Talkie-V12-PROFESSIONAL-INCOMING-CALL-AUDIO-FIX.zip"
-
-          if [ ! -f "$ZIP_FILE" ]; then
+          if [ ! -f "$V12_ZIP" ]; then
             echo "ERROR: V12 ZIP not found:"
-            echo "$ZIP_FILE"
+            echo "$V12_ZIP"
             echo "Available ZIP files:"
             find . -maxdepth 2 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "Using V12 ZIP:"
-          echo "$ZIP_FILE"
-
-          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+          echo "Using V12:"
+          echo "$V12_ZIP"
 
       - name: Extract V12 Android project
         shell: bash
@@ -46,26 +45,25 @@ jobs:
           rm -rf v12-extracted android-v12
           mkdir -p v12-extracted android-v12
 
-          unzip -q "$ZIP_FILE" -d v12-extracted
+          unzip -q "$V12_ZIP" -d v12-extracted
 
           PROJECT_DIR="$(find v12-extracted \
             -type f \
-            -name 'settings.gradle' \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
             -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: settings.gradle not found."
-            find v12-extracted -maxdepth 5 -type f -print
+            echo "ERROR: Android project not found."
+            find v12-extracted -maxdepth 6 -type f -print
             exit 1
           fi
 
-          echo "V12 project found at:"
-          echo "$PROJECT_DIR"
-
           cp -a "$PROJECT_DIR"/. android-v12/
 
-          echo "V12 project files:"
-          find android-v12 -maxdepth 5 -type f -print
+          test -f android-v12/app/build.gradle
+          test -f android-v12/app/src/main/AndroidManifest.xml
+
+          echo "V12 Android project found."
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -91,21 +89,6 @@ jobs:
             "platforms;android-36" \
             "build-tools;35.0.0"
 
-      - name: Check V12 configuration
-        working-directory: android-v12
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "=== settings.gradle ==="
-          cat settings.gradle
-
-          echo "=== app/build.gradle ==="
-          cat app/build.gradle
-
-          echo "=== Android Manifest ==="
-          cat app/src/main/AndroidManifest.xml
-
       - name: Generate Gradle wrapper
         working-directory: android-v12
         shell: bash
@@ -116,6 +99,20 @@ jobs:
 
           chmod +x gradlew
 
+      - name: Validate V12
+        working-directory: android-v12
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -nE \
+            "applicationId|versionCode|versionName|compileSdk|targetSdk" \
+            app/build.gradle
+
+          test -f app/src/main/java/com/raj/walkietalkie/MainActivity.java
+          test -f app/src/main/java/com/raj/walkietalkie/VoiceForegroundService.java
+          test -f app/src/main/assets/index.html
+
       - name: Build Debug APK
         working-directory: android-v12
         shell: bash
@@ -124,19 +121,127 @@ jobs:
 
           ./gradlew clean assembleDebug --stacktrace
 
-      - name: Verify Debug APK
+      - name: Prepare Play Store signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "${KEYSTORE_BASE64:-}" || {
+            echo "ERROR: KEYSTORE_BASE64 secret is missing"
+            exit 1
+          }
+
+          test -n "${KEYSTORE_PASSWORD:-}" || {
+            echo "ERROR: KEYSTORE_PASSWORD secret is missing"
+            exit 1
+          }
+
+          test -n "${KEY_ALIAS:-}" || {
+            echo "ERROR: KEY_ALIAS secret is missing"
+            exit 1
+          }
+
+          test -n "${KEY_PASSWORD:-}" || {
+            echo "ERROR: KEY_PASSWORD secret is missing"
+            exit 1
+          }
+
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
+            > android-v12/release-upload.jks
+
+          test -s android-v12/release-upload.jks
+
+          {
+            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android-v12/release-upload.jks"
+            echo "RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> android-v12/gradle.properties
+
+      - name: Configure release signing
         shell: bash
         run: |
           set -euo pipefail
 
-          APK="android-v12/app/build/outputs/apk/debug/app-debug.apk"
+          python3 - <<'PY'
+          from pathlib import Path
 
-          test -s "$APK"
+          p = Path("android-v12/app/build.gradle")
+          s = p.read_text(encoding="utf-8")
 
-          echo "Debug APK created:"
-          ls -lh "$APK"
+          if "playStoreRelease" not in s:
+              marker = "android {\n"
 
-      - name: Configure Play Store signing
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+              signing = """android {
+              signingConfigs {
+                  playStoreRelease {
+                      storeFile file(project.property("RELEASE_STORE_FILE"))
+                      storePassword project.property("RELEASE_STORE_PASSWORD")
+                      keyAlias project.property("RELEASE_KEY_ALIAS")
+                      keyPassword project.property("RELEASE_KEY_PASSWORD")
+                  }
+              }
+          """
+
+              if marker not in s:
+                  raise SystemExit("android block not found")
+
+              s = s.replace(marker, signing, 1)
+
+          s = s.replace(
+              "release { minifyEnabled false }",
+              """release {
+                  minifyEnabled false
+                  signingConfig signingConfigs.playStoreRelease
+              }"""
+          )
+
+          p.write_text(s, encoding="utf-8")
+          PY
+
+          grep -nE \
+            "playStoreRelease|signingConfig" \
+            android-v12/app/build.gradle
+
+      - name: Build Release AAB
+        working-directory: android-v12
         shell: bash
-        env:
+        run: |
+          set -euo pipefail
+
+          ./gradlew clean bundleRelease --stacktrace
+
+      - name: Verify AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          AAB="android-v12/app/build/outputs/bundle/release/app-release.aab"
+
+          test -s "$AAB"
+
+          jarsigner -verify -verbose -certs "$AAB" \
+            > /tmp/jarsigner.txt
+
+          tail -20 /tmp/jarsigner.txt
+
+          ls -lh "$AAB"
+
+      - name: Upload V12 AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAJ-Walkie-Talkie-V12-FINAL-AAB
+          path: android-v12/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Upload V12 Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAJ-Walkie-Talkie-V12-FINAL-DEBUG-APK
+          path: android-v12/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
