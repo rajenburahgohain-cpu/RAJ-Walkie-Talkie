@@ -1,4 +1,4 @@
-name: RAJ Walkie Talkie V12 Professional
+name: RAJ Walkie Talkie V13 Professional
 
 on:
   workflow_dispatch:
@@ -21,49 +21,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify V12 ZIP
+      - name: Verify V13 ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -f "$V12_ZIP" ]; then
-            echo "ERROR: V12 ZIP not found:"
-            echo "$V12_ZIP"
+          if [ ! -f "$V13_ZIP" ]; then
+            echo "ERROR: V13 ZIP not found:"
+            echo "$V13_ZIP"
             echo "Available ZIP files:"
             find . -maxdepth 2 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "Using V12:"
-          echo "$V12_ZIP"
+          echo "Using V13:"
+          echo "$V13_ZIP"
 
-      - name: Extract V12 Android project
+      - name: Extract V13 Android project
         shell: bash
         run: |
           set -euo pipefail
 
-          rm -rf v12-extracted android-v12
-          mkdir -p v12-extracted android-v12
+          rm -rf v13-extracted android-v13
+          mkdir -p v13-extracted android-v13
 
-          unzip -q "$V12_ZIP" -d v12-extracted
+          unzip -q "$V13_ZIP" -d v13-extracted
 
-          PROJECT_DIR="$(find v12-extracted \
+          PROJECT_DIR="$(find v13-extracted \
             -type f \
             \( -name settings.gradle -o -name settings.gradle.kts \) \
             -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android project not found."
-            find v12-extracted -maxdepth 6 -type f -print
+            find v13-extracted -maxdepth 6 -type f -print
             exit 1
           fi
 
-          cp -a "$PROJECT_DIR"/. android-v12/
+          cp -a "$PROJECT_DIR"/. android-v13/
 
-          test -f android-v12/app/build.gradle
-          test -f android-v12/app/src/main/AndroidManifest.xml
+          test -f android-v13/app/build.gradle
+          test -f android-v13/app/src/main/AndroidManifest.xml
 
-          echo "V12 Android project found."
+          echo "V13 Android project found."
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -90,7 +90,7 @@ jobs:
             "build-tools;35.0.0"
 
       - name: Generate Gradle wrapper
-        working-directory: android-v12
+        working-directory: android-v13
         shell: bash
         run: |
           set -euo pipefail
@@ -99,8 +99,8 @@ jobs:
 
           chmod +x gradlew
 
-      - name: Validate V12
-        working-directory: android-v12
+      - name: Validate V13
+        working-directory: android-v13
         shell: bash
         run: |
           set -euo pipefail
@@ -114,7 +114,7 @@ jobs:
           test -f app/src/main/assets/index.html
 
       - name: Build Debug APK
-        working-directory: android-v12
+        working-directory: android-v13
         shell: bash
         run: |
           set -euo pipefail
@@ -152,16 +152,16 @@ jobs:
           }
 
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
-            > android-v12/release-upload.jks
+            > android-v13/release-upload.jks
 
-          test -s android-v12/release-upload.jks
+          test -s android-v13/release-upload.jks
 
           {
-            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android-v12/release-upload.jks"
+            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android-v13/release-upload.jks"
             echo "RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
             echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
-          } >> android-v12/gradle.properties
+          } >> android-v13/gradle.properties
 
       - name: Configure release signing
         shell: bash
@@ -171,7 +171,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("android-v12/app/build.gradle")
+          p = Path("android-v13/app/build.gradle")
           s = p.read_text(encoding="utf-8")
 
           if "playStoreRelease" not in s:
@@ -206,10 +206,10 @@ jobs:
 
           grep -nE \
             "playStoreRelease|signingConfig" \
-            android-v12/app/build.gradle
+            android-v13/app/build.gradle
 
       - name: Build Release AAB
-        working-directory: android-v12
+        working-directory: android-v13
         shell: bash
         run: |
           set -euo pipefail
@@ -221,7 +221,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          AAB="android-v12/app/build/outputs/bundle/release/app-release.aab"
+          AAB="android-v13/app/build/outputs/bundle/release/app-release.aab"
 
           test -s "$AAB"
 
@@ -232,16 +232,16 @@ jobs:
 
           ls -lh "$AAB"
 
-      - name: Upload V12 AAB
+      - name: Upload V13 AAB
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V12-FINAL-AAB
-          path: android-v12/app/build/outputs/bundle/release/app-release.aab
+          name: RAJ-Walkie-Talkie-V13-FINAL-AAB
+          path: android-v13/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
-      - name: Upload V12 Debug APK
+      - name: Upload V13 Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V12-FINAL-DEBUG-APK
-          path: android-v12/app/build/outputs/apk/**/*.apk
+          name: RAJ-Walkie-Talkie-V13-FINAL-DEBUG-APK
+          path: android-v13/app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
