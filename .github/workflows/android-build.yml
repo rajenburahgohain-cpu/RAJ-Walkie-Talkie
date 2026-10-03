@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      V12_ZIP: RAJ-Walkie-Talkie-V12-FINAL-KOTLIN-FIXED.zip
+      V13_ZIP: RAJ-Walkie-Talkie-V13-PLAY-BILLING-8-FIXED.zip
 
     steps:
 
