@@ -1,4 +1,4 @@
-name: RAJ Walkie Talkie V11
+name: RAJ Walkie Talkie V12 Professional
 
 on:
   workflow_dispatch:
@@ -14,210 +14,129 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract Verified Final V11 ZIP
+      - name: Find V12 ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP="RAJ-Walkie-Talkie-V11-FINAL-CONNECTION-SETTINGS-VERIFIED-FIX-2026-09-24.zip"
+          ZIP_FILE="RAJ-Walkie-Talkie-V12-PROFESSIONAL-INCOMING-CALL-AUDIO-FIX.zip"
 
-          echo "Using verified V11 ZIP: $ZIP"
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: V12 ZIP not found:"
+            echo "$ZIP_FILE"
+            echo "Available ZIP files:"
+            find . -maxdepth 2 -type f -iname "*.zip" -print
+            exit 1
+          fi
 
-          test -f "$ZIP"
+          echo "Using V12 ZIP:"
+          echo "$ZIP_FILE"
 
-          rm -rf v11-extracted android-v11
-          mkdir -p v11-extracted android-v11
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
-          unzip -q "$ZIP" -d v11-extracted
+      - name: Extract V12 Android project
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          echo "Finding Android Gradle project..."
+          rm -rf v12-extracted android-v12
+          mkdir -p v12-extracted android-v12
 
-          PROJECT_DIR="$(find v11-extracted -type f -name 'settings.gradle.kts' -print -quit | xargs -r dirname)"
+          unzip -q "$ZIP_FILE" -d v12-extracted
+
+          PROJECT_DIR="$(find v12-extracted \
+            -type f \
+            -name 'settings.gradle' \
+            -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android Gradle project not found"
-            find v11-extracted -maxdepth 6 -type f | head -200
+            echo "ERROR: settings.gradle not found."
+            find v12-extracted -maxdepth 5 -type f -print
             exit 1
           fi
 
-          echo "Android project found at:"
+          echo "V12 project found at:"
           echo "$PROJECT_DIR"
 
-          cp -a "$PROJECT_DIR"/. android-v11/
+          cp -a "$PROJECT_DIR"/. android-v12/
 
-          echo "Project files:"
-          ls -la android-v11
-
-      - name: Force Android API 36
-        working-directory: android-v11
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          BUILD_FILE="app/build.gradle.kts"
-
-          test -f "$BUILD_FILE"
-
-          echo "Original SDK configuration:"
-          grep -nE "compileSdk|targetSdk|minSdk" "$BUILD_FILE" || true
-
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          p = Path("app/build.gradle.kts")
-          s = p.read_text(encoding="utf-8")
-
-          s = re.sub(
-              r'(?m)^(\s*compileSdk\s*=\s*).*$',
-              r'\g<1>36',
-              s
-          )
-
-          s = re.sub(
-              r'(?m)^(\s*targetSdk\s*=\s*).*$',
-              r'\g<1>36',
-              s
-          )
-
-          p.write_text(s, encoding="utf-8")
-          PY
-
-          echo "Updated SDK configuration:"
-          grep -nE "compileSdk|targetSdk|minSdk" "$BUILD_FILE" || true
-
-      - name: Check Source
-        working-directory: android-v11
-        shell: bash
-        run: |
-          set -e
-
-          if grep -R "Settings.ACTION_TETHER_SETTINGS" -n app/src/main/java; then
-            echo "ERROR: Old ACTION_TETHER_SETTINGS reference still exists."
-            exit 1
-          fi
-
-          if grep -R "BillingClient.BillingClientStateListener" -n app/src/main/java; then
-            echo "ERROR: Old nested BillingClientStateListener reference still exists."
-            exit 1
-          fi
-
-          echo "Source checks passed."
+          echo "V12 project files:"
+          find android-v12 -maxdepth 5 -type f -print
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Setup Gradle 8.13
-        uses: gradle/actions/setup-gradle@v6
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: "8.11.1"
 
-      - name: Decode Release Keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      - name: Install Android SDK
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "ERROR: KEYSTORE_BASE64 secret is missing."
-            exit 1
-          fi
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
 
-          echo "$KEYSTORE_BASE64" | base64 --decode > android-v11/release-upload.jks
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
 
-          test -s android-v11/release-upload.jks
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0"
 
-          echo "Keystore decoded successfully."
+      - name: Check V12 configuration
+        working-directory: android-v12
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== settings.gradle ==="
+          cat settings.gradle
+
+          echo "=== app/build.gradle ==="
+          cat app/build.gradle
+
+          echo "=== Android Manifest ==="
+          cat app/src/main/AndroidManifest.xml
+
+      - name: Generate Gradle wrapper
+        working-directory: android-v12
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle wrapper --gradle-version 8.11.1
+
+          chmod +x gradlew
 
       - name: Build Debug APK
-        working-directory: android-v11
-        run: |
-          gradle clean assembleDebug --no-daemon --stacktrace
-
-      - name: Build Release AAB
-        working-directory: android-v11
-        run: |
-          gradle bundleRelease --no-daemon --stacktrace
-
-      - name: Sign Release AAB
-        working-directory: android-v11
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        working-directory: android-v12
         shell: bash
         run: |
           set -euo pipefail
 
-          AAB="app/build/outputs/bundle/release/app-release.aab"
+          ./gradlew clean assembleDebug --stacktrace
 
-          test -f "$AAB"
-
-          jarsigner \
-            -keystore release-upload.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -keypass "$KEY_PASSWORD" \
-            -signedjar app/build/outputs/bundle/release/app-release-signed.aab \
-            "$AAB" \
-            "$KEY_ALIAS"
-
-          test -f app/build/outputs/bundle/release/app-release-signed.aab
-
-          echo "Release AAB signed successfully."
-
-      - name: Verify Release AAB
-        working-directory: android-v11
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      - name: Verify Debug APK
         shell: bash
         run: |
           set -euo pipefail
 
-          jarsigner \
-            -verify \
-            -verbose \
-            -certs \
-            app/build/outputs/bundle/release/app-release-signed.aab
+          APK="android-v12/app/build/outputs/apk/debug/app-debug.apk"
 
-          echo "AAB signature verification passed."
+          test -s "$APK"
 
-      - name: Verify Outputs
-        working-directory: android-v11
-        run: |
-          set -e
+          echo "Debug APK created:"
+          ls -lh "$APK"
 
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          test -f app/build/outputs/bundle/release/app-release-signed.aab
-
-          echo "DEBUG APK:"
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
-
-          echo "SIGNED RELEASE AAB:"
-          ls -lh app/build/outputs/bundle/release/app-release-signed.aab
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: RAJ-Walkie-Talkie-V11-DEBUG-APK
-          path: android-v11/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Upload Signed Release AAB
-        uses: actions/upload-artifact@v4
-        with:
-          name: RAJ-Walkie-Talkie-V11-SIGNED-RELEASE-AAB
-          path: android-v11/app/build/outputs/bundle/release/app-release-signed.aab
-          if-no-files-found: error
-
-      - name: Cleanup Keystore
-        if: always()
+      - name: Configure Play Store signing
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         shell: bash
-        run: |
-          rm -f android-v11/release-upload.jks
+        env:
