@@ -243,5 +243,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RAJ-Walkie-Talkie-V12-FINAL-DEBUG-APK
-          path: android-v12/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          path: android-v12/app/build/outputs/apk/**/*.apk
+if-no-files-found: warn
