@@ -18,16 +18,9 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
-      # 1. Checkout repository
-      # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # ---------------------------------------------------------
-      # 2. Verify V14 ZIP
-      # ---------------------------------------------------------
       - name: Verify V14 ZIP
         shell: bash
         run: |
@@ -36,9 +29,7 @@ jobs:
           echo "Checking V14 ZIP..."
 
           if [ ! -f "$V14_ZIP" ]; then
-            echo "ERROR: V14 ZIP not found:"
-            echo "$V14_ZIP"
-            echo ""
+            echo "ERROR: V14 ZIP not found: $V14_ZIP"
             echo "Available ZIP files:"
             find . -maxdepth 4 -type f -iname "*.zip" -print
             exit 1
@@ -47,22 +38,13 @@ jobs:
           echo "V14 ZIP found:"
           ls -lh "$V14_ZIP"
 
-
-      # ---------------------------------------------------------
-      # 3. Extract V14 Android project
-      # ---------------------------------------------------------
       - name: Extract V14 Android project
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Extracting V14..."
-
-          rm -rf v14-extracted
-          rm -rf android-v14
-
-          mkdir -p v14-extracted
-          mkdir -p android-v14
+          rm -rf v14-extracted android-v14
+          mkdir -p v14-extracted android-v14
 
           unzip -q "$V14_ZIP" -d v14-extracted
 
@@ -76,15 +58,11 @@ jobs:
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android project not found inside V14 ZIP."
-
-            echo "Files found:"
             find v14-extracted -maxdepth 7 -type f -print
-
             exit 1
           fi
 
-          echo "Android project:"
-          echo "$PROJECT_DIR"
+          echo "Android project: $PROJECT_DIR"
 
           cp -a "$PROJECT_DIR"/. android-v14/
 
@@ -98,29 +76,17 @@ jobs:
 
           echo "V14 Android project found successfully."
 
-
-      # ---------------------------------------------------------
-      # 4. Setup Java 17
-      # ---------------------------------------------------------
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-
-      # ---------------------------------------------------------
-      # 5. Setup Gradle
-      # ---------------------------------------------------------
       - name: Setup Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
-
-      # ---------------------------------------------------------
-      # 6. Install Android SDK
-      # ---------------------------------------------------------
       - name: Install Android SDK
         shell: bash
         run: |
@@ -128,11 +94,7 @@ jobs:
 
           SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
 
-          echo "Accepting Android SDK licenses..."
-
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-
-          echo "Installing Android SDK..."
 
           "$SDKMANAGER" \
             "platforms;android-36" \
@@ -140,10 +102,6 @@ jobs:
 
           echo "Android SDK ready."
 
-
-      # ---------------------------------------------------------
-      # 7. Generate Gradle Wrapper
-      # ---------------------------------------------------------
       - name: Generate Gradle wrapper
         working-directory: android-v14
         shell: bash
@@ -151,69 +109,33 @@ jobs:
           set -euo pipefail
 
           gradle wrapper --gradle-version 8.11.1
-
           chmod +x gradlew
 
           echo "Gradle wrapper generated."
 
-
-      # ---------------------------------------------------------
-      # 8. Validate V14 project
-      # ---------------------------------------------------------
       - name: Validate V14
         working-directory: android-v14
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Validating V14 configuration..."
+          echo "Validating V14..."
 
-          echo ""
-          echo "Android configuration:"
           grep -nE \
             "applicationId|versionCode|versionName|compileSdk|targetSdk" \
             app/build.gradle
 
-          echo ""
-          echo "Billing configuration:"
-          grep -n \
-            "com.android.billingclient:billing:8.0.0" \
-            app/build.gradle
-
-          echo ""
-          echo "Checking V14 version..."
-
           grep -q "versionCode 14" app/build.gradle
-
           grep -q "versionName '14.0'" app/build.gradle
+          grep -q "com.android.billingclient:billing:8.0.0" app/build.gradle
 
-          echo "Checking Billing..."
+          test -f app/src/main/java/com/raj/walkietalkie/MainActivity.java
+          test -f app/src/main/java/com/raj/walkietalkie/VoiceForegroundService.java
+          test -f app/src/main/assets/index.html
+          test -f app/src/main/AndroidManifest.xml
 
-          grep -q \
-            "com.android.billingclient:billing:8.0.0" \
-            app/build.gradle
-
-          echo "Checking source files..."
-
-          test -f \
-            app/src/main/java/com/raj/walkietalkie/MainActivity.java
-
-          test -f \
-            app/src/main/java/com/raj/walkietalkie/VoiceForegroundService.java
-
-          test -f \
-            app/src/main/assets/index.html
-
-          test -f \
-            app/src/main/AndroidManifest.xml
-
-          echo ""
           echo "V14 validation successful."
 
-
-      # ---------------------------------------------------------
-      # 9. Build Debug APK
-      # ---------------------------------------------------------
       - name: Build Debug APK
         working-directory: android-v14
         shell: bash
@@ -222,14 +144,13 @@ jobs:
 
           ./gradlew clean assembleDebug --stacktrace
 
-          echo ""
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          test -s "$APK"
+
           echo "Debug APK created:"
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          ls -lh "$APK"
 
-
-      # ---------------------------------------------------------
-      # 10. Prepare Play Store signing
-      # ---------------------------------------------------------
       - name: Prepare Play Store signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -263,15 +184,10 @@ jobs:
             exit 1
           fi
 
-          echo "Decoding upload keystore..."
-
           printf '%s' "$KEYSTORE_BASE64" | \
-            base64 --decode > \
-            android-v14/release-upload.jks
+            base64 --decode > android-v14/release-upload.jks
 
           test -s android-v14/release-upload.jks
-
-          echo "Writing release signing properties..."
 
           echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android-v14/release-upload.jks" \
             >> android-v14/gradle.properties
@@ -287,10 +203,6 @@ jobs:
 
           echo "Play Store signing configuration prepared successfully."
 
-
-      # ---------------------------------------------------------
-      # 11. Configure release signing
-      # ---------------------------------------------------------
       - name: Configure release signing
         working-directory: android-v14
         shell: bash
@@ -321,14 +233,14 @@ jobs:
                   1
               )
 
-          old_release = "release { minifyEnabled false }"
+          if "signingConfig signingConfigs.playStoreRelease" not in text:
+              old_release = "release { minifyEnabled false }"
 
-          new_release = """release {
+              new_release = """release {
               minifyEnabled false
               signingConfig signingConfigs.playStoreRelease
           }"""
 
-          if "signingConfig signingConfigs.playStoreRelease" not in text:
               if old_release in text:
                   text = text.replace(
                       old_release,
@@ -345,41 +257,26 @@ jobs:
           print("Release signing configured successfully.")
           PY
 
-          echo ""
-          echo "Checking signing configuration..."
+          grep -n "playStoreRelease" app/build.gradle
+          grep -n "signingConfig signingConfigs.playStoreRelease" app/build.gradle
 
-          grep -n \
-            "playStoreRelease" \
-            app/build.gradle
-
-          grep -n \
-            "signingConfig signingConfigs.playStoreRelease" \
-            app/build.gradle
-
-
-      # ---------------------------------------------------------
-      # 12. Build Release AAB
-      # ---------------------------------------------------------
       - name: Build Release AAB
         working-directory: android-v14
         shell: bash
         run: |
           set -euo pipefail
 
-          ./gradlew clean bundleRelease --stacktrace
+          # Do not use clean here.
+          # Debug APK must remain available.
+          ./gradlew bundleRelease --stacktrace
 
           AAB="app/build/outputs/bundle/release/app-release.aab"
 
           test -s "$AAB"
 
-          echo ""
-          echo "Release AAB created successfully:"
+          echo "Release AAB created:"
           ls -lh "$AAB"
 
-
-      # ---------------------------------------------------------
-      # 13. Verify Release AAB
-      # ---------------------------------------------------------
       - name: Verify Release AAB
         working-directory: android-v14
         shell: bash
@@ -390,7 +287,7 @@ jobs:
 
           test -s "$AAB"
 
-          echo "Verifying AAB..."
+          echo "Verifying Release AAB..."
 
           jarsigner \
             -verify \
@@ -400,15 +297,23 @@ jobs:
 
           tail -20 /tmp/jarsigner.txt
 
-          echo ""
           echo "AAB verification completed."
 
-          ls -lh "$AAB"
+      - name: Rebuild Debug APK for upload
+        working-directory: android-v14
+        shell: bash
+        run: |
+          set -euo pipefail
 
+          ./gradlew assembleDebug --stacktrace
 
-      # ---------------------------------------------------------
-      # 14. Upload Release AAB
-      # ---------------------------------------------------------
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          test -s "$APK"
+
+          echo "Debug APK ready:"
+          ls -lh "$APK"
+
       - name: Upload V14 AAB
         uses: actions/upload-artifact@v4
         with:
@@ -416,10 +321,6 @@ jobs:
           path: android-v14/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
-
-      # ---------------------------------------------------------
-      # 15. Upload Debug APK
-      # ---------------------------------------------------------
       - name: Upload V14 Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -427,21 +328,16 @@ jobs:
           path: android-v14/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-
-      # ---------------------------------------------------------
-      # 16. Final success message
-      # ---------------------------------------------------------
-      - name: Build completed
+      - name: Final build verification
         shell: bash
         run: |
-          echo ""
+          set -euo pipefail
+
           echo "=============================================="
           echo " RAJ WALKIE TALKIE V14 BUILD SUCCESSFUL"
           echo "=============================================="
-          echo ""
           echo "Version Code : 14"
           echo "Version Name : 14.0"
-          echo "Background   : Reconnect enabled"
-          echo "Debug APK    : Uploaded"
-          echo "Release AAB  : Uploaded"
-          echo ""
+          echo "Release AAB  : READY"
+          echo "Debug APK    : READY"
+          echo "=============================================="
