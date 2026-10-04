@@ -1,4 +1,4 @@
-name: RAJ Walkie Talkie V13 Professional
+name: RAJ Walkie Talkie V14 Professional
 
 on:
   workflow_dispatch:
@@ -14,56 +14,61 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      V13_ZIP: RAJ-Walkie-Talkie-V13-PLAY-BILLING-8-FIXED.zip
+      V14_ZIP: RAJ-Walkie-Talkie-V14-BACKGROUND-RECONNECT.zip
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify V13 ZIP
+      - name: Verify V14 ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -f "$V13_ZIP" ]; then
-            echo "ERROR: V13 ZIP not found:"
-            echo "$V13_ZIP"
+          if [ ! -f "$V14_ZIP" ]; then
+            echo "ERROR: V14 ZIP not found: $V14_ZIP"
             echo "Available ZIP files:"
-            find . -maxdepth 2 -type f -iname "*.zip" -print
+            find . -maxdepth 3 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "Using V13:"
-          echo "$V13_ZIP"
+          echo "Using V14: $V14_ZIP"
 
-      - name: Extract V13 Android project
+      - name: Extract V14 Android project
         shell: bash
         run: |
           set -euo pipefail
 
-          rm -rf v13-extracted android-v13
-          mkdir -p v13-extracted android-v13
+          rm -rf v14-extracted android-v14
+          mkdir -p v14-extracted android-v14
 
-          unzip -q "$V13_ZIP" -d v13-extracted
+          unzip -q "$V14_ZIP" -d v14-extracted
 
-          PROJECT_DIR="$(find v13-extracted \
-            -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit | xargs -r dirname)"
+          PROJECT_DIR="$(
+            find v14-extracted \
+              -type f \
+              \( -name settings.gradle -o -name settings.gradle.kts \) \
+              -print -quit |
+              xargs -r -n1 dirname
+          )"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android project not found."
-            find v13-extracted -maxdepth 6 -type f -print
+            echo "ERROR: Android project not found inside V14 ZIP."
+            find v14-extracted -maxdepth 6 -type f -print
             exit 1
           fi
 
-          cp -a "$PROJECT_DIR"/. android-v13/
+          cp -a "$PROJECT_DIR"/. android-v14/
 
-          test -f android-v13/app/build.gradle
-          test -f android-v13/app/src/main/AndroidManifest.xml
+          test -f android-v14/settings.gradle || \
+          test -f android-v14/settings.gradle.kts
 
-          echo "V13 Android project found."
+          test -f android-v14/app/build.gradle || \
+          test -f android-v14/app/build.gradle.kts
+
+          test -f android-v14/app/src/main/AndroidManifest.xml
+
+          echo "V14 Android project found."
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -71,7 +76,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
@@ -90,8 +95,7 @@ jobs:
             "build-tools;35.0.0"
 
       - name: Generate Gradle wrapper
-        working-directory: android-v13
-        shell: bash
+        working-directory: android-v14
         run: |
           set -euo pipefail
 
@@ -99,85 +103,80 @@ jobs:
 
           chmod +x gradlew
 
-      - name: Validate V13
-        working-directory: android-v13
-        shell: bash
+      - name: Validate V14
+        working-directory: android-v14
         run: |
           set -euo pipefail
+
+          echo "Checking V14 configuration..."
 
           grep -nE \
-            "applicationId|versionCode|versionName|compileSdk|targetSdk" \
+            "applicationId|versionCode|versionName|compileSdk|targetSdk|com.android.billingclient:billing:" \
             app/build.gradle
 
-          test -f app/src/main/java/com/raj/walkietalkie/MainActivity.java
-          test -f app/src/main/java/com/raj/walkietalkie/VoiceForegroundService.java
-          test -f app/src/main/assets/index.html
+          grep -q "versionCode 14" app/build.gradle
+
+          grep -q "versionName '14.0'" app/build.gradle
+
+          grep -q \
+            "com.android.billingclient:billing:8.0.0" \
+            app/build.gradle
+
+          test -f \
+            app/src/main/java/com/raj/walkietalkie/MainActivity.java
+
+          test -f \
+            app/src/main/java/com/raj/walkietalkie/VoiceForegroundService.java
+
+          test -f \
+            app/src/main/assets/index.html
+
+          echo "V14 validation successful."
 
       - name: Build Debug APK
-        working-directory: android-v13
-        shell: bash
+        working-directory: android-v14
         run: |
-          set -euo pipefail
-
           ./gradlew clean assembleDebug --stacktrace
 
       - name: Prepare Play Store signing
-        shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
         run: |
           set -euo pipefail
 
-          test -n "${KEYSTORE_BASE64:-}" || {
-            echo "ERROR: KEYSTORE_BASE64 secret is missing"
-            exit 1
-          }
+          test -n "${KEYSTORE_BASE64:-}"
+          test -n "${KEYSTORE_PASSWORD:-}"
+          test -n "${KEY_ALIAS:-}"
+          test -n "${KEY_PASSWORD:-}"
 
-          test -n "${KEYSTORE_PASSWORD:-}" || {
-            echo "ERROR: KEYSTORE_PASSWORD secret is missing"
-            exit 1
-          }
-
-          test -n "${KEY_ALIAS:-}" || {
-            echo "ERROR: KEY_ALIAS secret is missing"
-            exit 1
-          }
-
-          test -n "${KEY_PASSWORD:-}" || {
-            echo "ERROR: KEY_PASSWORD secret is missing"
-            exit 1
-          }
-
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
-            > android-v13/release-upload.jks
-
-          test -s android-v13/release-upload.jks
+          printf '%s' "$KEYSTORE_BASE64" |
+            base64 --decode >
+            android-v14/release-upload.jks
 
           {
-            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android-v13/release-upload.jks"
+            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android-v14/release-upload.jks"
             echo "RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
             echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
-          } >> android-v13/gradle.properties
+          } >> android-v14/gradle.properties
 
       - name: Configure release signing
-        shell: bash
+        working-directory: android-v14
         run: |
-          set -euo pipefail
-
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("android-v13/app/build.gradle")
+          p = Path("app/build.gradle")
           s = p.read_text(encoding="utf-8")
 
           if "playStoreRelease" not in s:
-              marker = "android {\n"
-
-              signing = """android {
+              s = s.replace(
+                  "android {",
+                  """android {
               signingConfigs {
                   playStoreRelease {
                       storeFile file(project.property("RELEASE_STORE_FILE"))
@@ -185,63 +184,55 @@ jobs:
                       keyAlias project.property("RELEASE_KEY_ALIAS")
                       keyPassword project.property("RELEASE_KEY_PASSWORD")
                   }
-              }
-          """
+              }""",
+                  1
+              )
 
-              if marker not in s:
-                  raise SystemExit("android block not found")
-
-              s = s.replace(marker, signing, 1)
-
-          s = s.replace(
-              "release { minifyEnabled false }",
-              """release {
+          if "signingConfig signingConfigs.playStoreRelease" not in s:
+              s = s.replace(
+                  "release { minifyEnabled false }",
+                  """release {
                   minifyEnabled false
                   signingConfig signingConfigs.playStoreRelease
               }"""
-          )
+              )
 
           p.write_text(s, encoding="utf-8")
           PY
 
-          grep -nE \
-            "playStoreRelease|signingConfig" \
-            android-v13/app/build.gradle
-
       - name: Build Release AAB
-        working-directory: android-v13
-        shell: bash
+        working-directory: android-v14
         run: |
-          set -euo pipefail
-
           ./gradlew clean bundleRelease --stacktrace
 
-      - name: Verify AAB
-        shell: bash
+      - name: Verify Release AAB
+        working-directory: android-v14
         run: |
           set -euo pipefail
 
-          AAB="android-v13/app/build/outputs/bundle/release/app-release.aab"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
 
           test -s "$AAB"
 
-          jarsigner -verify -verbose -certs "$AAB" \
-            > /tmp/jarsigner.txt
+          jarsigner -verify \
+            -verbose \
+            -certs \
+            "$AAB" > /tmp/jarsigner.txt
 
           tail -20 /tmp/jarsigner.txt
 
           ls -lh "$AAB"
 
-      - name: Upload V13 AAB
+      - name: Upload V14 AAB
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V13-FINAL-AAB
-          path: android-v13/app/build/outputs/bundle/release/app-release.aab
+          name: RAJ-Walkie-Talkie-V14-BACKGROUND-RECONNECT-AAB
+          path: android-v14/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
-      - name: Upload V13 Debug APK
+      - name: Upload V14 Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: RAJ-Walkie-Talkie-V13-FINAL-DEBUG-APK
-          path: android-v13/app/build/outputs/apk/**/*.apk
-          if-no-files-found: warn
+          name: RAJ-Walkie-Talkie-V14-BACKGROUND-RECONNECT-DEBUG-APK
+          path: android-v14/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
