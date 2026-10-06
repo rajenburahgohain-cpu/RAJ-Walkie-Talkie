@@ -20,9 +20,15 @@ jobs:
 
     steps:
 
+      # ============================================================
+      # 1. CHECKOUT
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ============================================================
+      # 2. VERIFY V18 ZIP
+      # ============================================================
       - name: Verify V18 ZIP
         shell: bash
         run: |
@@ -30,6 +36,7 @@ jobs:
 
           if [ ! -f "$V18_ZIP" ]; then
             echo "ERROR: V18 ZIP not found: $V18_ZIP"
+            echo "Available ZIP files:"
             find . -maxdepth 3 -type f -iname "*.zip" -print
             exit 1
           fi
@@ -37,6 +44,9 @@ jobs:
           echo "V18 ZIP found:"
           ls -lh "$V18_ZIP"
 
+      # ============================================================
+      # 3. EXTRACT ANDROID PROJECT
+      # ============================================================
       - name: Extract V18 Android project
         shell: bash
         run: |
@@ -75,17 +85,26 @@ jobs:
 
           echo "V18 Android project verified."
 
+      # ============================================================
+      # 4. JAVA 17
+      # ============================================================
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
+      # ============================================================
+      # 5. GRADLE 8.11.1
+      # ============================================================
       - name: Setup Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
+      # ============================================================
+      # 6. ANDROID SDK
+      # ============================================================
       - name: Install Android SDK
         shell: bash
         run: |
@@ -99,6 +118,9 @@ jobs:
             "platforms;android-36" \
             "build-tools;35.0.0"
 
+      # ============================================================
+      # 7. GRADLE WRAPPER
+      # ============================================================
       - name: Generate Gradle wrapper
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -106,10 +128,14 @@ jobs:
           set -euo pipefail
 
           gradle wrapper --gradle-version 8.11.1
+
           chmod +x gradlew
 
           ./gradlew --version
 
+      # ============================================================
+      # 8. VALIDATE V18
+      # ============================================================
       - name: Validate V18 configuration
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -122,26 +148,169 @@ jobs:
             BUILD_FILE="app/build.gradle.kts"
           fi
 
+          echo "Checking version..."
+
           grep -qE "versionCode[[:space:]]+18" "$BUILD_FILE"
 
           grep -qE "versionName[[:space:]]+['\"]18\.0['\"]" "$BUILD_FILE"
 
+          echo "Checking LiveKit..."
+
           grep -q "livekit-android" "$BUILD_FILE"
+
+          echo "Checking Native Voice Service..."
 
           test -f \
             app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt
 
+          echo "Checking FCM service..."
+
           test -f \
             app/src/main/java/com/raj/walkietalkie/PttWakeMessagingService.kt
 
+          echo "Checking microphone foreground service..."
+
           grep -q "FOREGROUND_SERVICE_MICROPHONE" \
             app/src/main/AndroidManifest.xml
+
+          echo "Checking microphone permission..."
 
           grep -q "RECORD_AUDIO" \
             app/src/main/AndroidManifest.xml
 
           echo "V18 validation successful."
 
+      # ============================================================
+      # 9. FIX JAVA/KOTLIN JVM TARGET
+      # IMPORTANT:
+      # Previous error:
+      # Java = 1.8
+      # Kotlin = 17
+      #
+      # This step forces BOTH to JVM 17.
+      # ============================================================
+      - name: Fix Java Kotlin JVM target
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/build.gradle")
+
+          if not path.exists():
+              raise SystemExit(
+                  "ERROR: app/build.gradle not found."
+              )
+
+          text = path.read_text(encoding="utf-8")
+
+          # --------------------------------------------------------
+          # Remove old Java compatibility blocks if present
+          # --------------------------------------------------------
+          text = text.replace(
+              "sourceCompatibility JavaVersion.VERSION_1_8",
+              "sourceCompatibility JavaVersion.VERSION_17"
+          )
+
+          text = text.replace(
+              "targetCompatibility JavaVersion.VERSION_1_8",
+              "targetCompatibility JavaVersion.VERSION_17"
+          )
+
+          text = text.replace(
+              "sourceCompatibility = JavaVersion.VERSION_1_8",
+              "sourceCompatibility = JavaVersion.VERSION_17"
+          )
+
+          text = text.replace(
+              "targetCompatibility = JavaVersion.VERSION_1_8",
+              "targetCompatibility = JavaVersion.VERSION_17"
+          )
+
+          # --------------------------------------------------------
+          # Replace old Kotlin JVM target
+          # --------------------------------------------------------
+          text = text.replace(
+              "jvmTarget = '1.8'",
+              "jvmTarget = '17'"
+          )
+
+          text = text.replace(
+              'jvmTarget = "1.8"',
+              'jvmTarget = "17"'
+          )
+
+          # --------------------------------------------------------
+          # Add Java/Kotlin compatibility if missing
+          # --------------------------------------------------------
+          if "sourceCompatibility JavaVersion.VERSION_17" not in text:
+
+              compatibility = """
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+              """
+
+              text = text.replace(
+                  "android {",
+                  "android {" + compatibility,
+                  1
+              )
+
+          # --------------------------------------------------------
+          # Make sure Kotlin target is 17
+          # --------------------------------------------------------
+          if "jvmTarget = '17'" not in text:
+
+              if "kotlinOptions {" in text:
+
+                  text = text.replace(
+                      "kotlinOptions {",
+                      "kotlinOptions {\n        jvmTarget = '17'",
+                      1
+                  )
+
+              else:
+
+                  compatibility = """
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+              """
+
+                  text = text.replace(
+                      "android {",
+                      "android {" + compatibility,
+                      1
+                  )
+
+          path.write_text(text, encoding="utf-8")
+
+          print("Java JVM target = 17")
+          print("Kotlin JVM target = 17")
+          PY
+
+          echo "================================================"
+          echo "JVM TARGET CONFIGURATION"
+          echo "================================================"
+
+          grep -n \
+            "sourceCompatibility\|targetCompatibility\|jvmTarget" \
+            app/build.gradle || true
+
+          echo "================================================"
+
+      # ============================================================
+      # 10. FIREBASE
+      # ============================================================
       - name: Configure Firebase when supplied
         working-directory: ${{ env.PROJECT_DIR }}
         env:
@@ -167,11 +336,18 @@ jobs:
 
           fi
 
+      # ============================================================
+      # 11. DEBUG BUILD
+      # ============================================================
       - name: Build V18 Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -euo pipefail
+
+          echo "================================================"
+          echo "BUILDING V18 DEBUG APK"
+          echo "================================================"
 
           ./gradlew clean assembleDebug --stacktrace
 
@@ -179,9 +355,12 @@ jobs:
 
           test -s "$APK"
 
-          echo "V18 Debug APK:"
+          echo "V18 Debug APK created:"
           ls -lh "$APK"
 
+      # ============================================================
+      # 12. CHECK SIGNING SECRETS
+      # ============================================================
       - name: Check Play Store signing secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -214,6 +393,9 @@ jobs:
 
           echo "Signing secrets are available."
 
+      # ============================================================
+      # 13. PREPARE KEYSTORE
+      # ============================================================
       - name: Prepare Play Store keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -229,6 +411,9 @@ jobs:
 
           echo "Keystore prepared."
 
+      # ============================================================
+      # 14. CONFIGURE RELEASE SIGNING
+      # ============================================================
       - name: Configure release signing
         working-directory: ${{ env.PROJECT_DIR }}
         env:
@@ -252,6 +437,9 @@ jobs:
           path = Path("app/build.gradle")
           text = path.read_text(encoding="utf-8")
 
+          # --------------------------------------------------------
+          # Add signing config
+          # --------------------------------------------------------
           if "playStoreRelease" not in text:
 
               signing = """
@@ -271,34 +459,65 @@ jobs:
                   1
               )
 
-          old = "release { minifyEnabled false }"
+          # --------------------------------------------------------
+          # Configure release signing
+          # --------------------------------------------------------
+          if "signingConfig signingConfigs.playStoreRelease" not in text:
 
-          new = """release {
+              old = "release { minifyEnabled false }"
+
+              new = """release {
               minifyEnabled false
               signingConfig signingConfigs.playStoreRelease
           }"""
 
-          if "signingConfig signingConfigs.playStoreRelease" not in text:
-
               if old in text:
-                  text = text.replace(old, new, 1)
-              else:
-                  raise SystemExit(
-                      "Expected release buildType not found."
+
+                  text = text.replace(
+                      old,
+                      new,
+                      1
                   )
 
-          path.write_text(text, encoding="utf-8")
+              elif "release {" in text:
+
+                  marker = "release {"
+
+                  text = text.replace(
+                      marker,
+                      """release {
+              minifyEnabled false
+              signingConfig signingConfigs.playStoreRelease
+          """,
+                      1
+                  )
+
+              else:
+
+                  raise SystemExit(
+                      "ERROR: release buildType not found."
+                  )
+
+          path.write_text(
+              text,
+              encoding="utf-8"
+          )
 
           print("Release signing configured.")
           PY
 
+      # ============================================================
+      # 15. RELEASE AAB
+      # ============================================================
       - name: Build V18 Release AAB
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Building V18 Production AAB..."
+          echo "================================================"
+          echo "BUILDING V18 PRODUCTION AAB"
+          echo "================================================"
 
           ./gradlew bundleRelease --stacktrace
 
@@ -309,6 +528,9 @@ jobs:
           echo "V18 Production AAB created:"
           ls -lh "$AAB"
 
+      # ============================================================
+      # 16. VERIFY AAB
+      # ============================================================
       - name: Verify V18 AAB
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -328,6 +550,9 @@ jobs:
 
           echo "AAB verification completed."
 
+      # ============================================================
+      # 17. UPLOAD PRODUCTION AAB
+      # ============================================================
       - name: Upload V18 Production AAB
         uses: actions/upload-artifact@v4
         with:
@@ -336,6 +561,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # ============================================================
+      # 18. UPLOAD DEBUG APK
+      # ============================================================
       - name: Upload V18 Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -344,6 +572,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # ============================================================
+      # 19. FINAL VERIFICATION
+      # ============================================================
       - name: Final V18 Build Verification
         shell: bash
         run: |
@@ -354,5 +585,10 @@ jobs:
           echo "================================================"
           echo "Version Code : 18"
           echo "Version Name : 18.0"
-          echo "AAB Artifact : RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-AAB"
+          echo ""
+          echo "AAB Artifact:"
+          echo "RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-AAB"
+          echo ""
+          echo "Debug Artifact:"
+          echo "RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-DEBUG-APK"
           echo "================================================"
