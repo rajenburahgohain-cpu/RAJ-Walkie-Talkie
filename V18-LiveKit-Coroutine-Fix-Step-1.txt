@@ -1,0 +1,140 @@
+# V18 FIX — insert this step immediately AFTER
+# "Extract V18 Android project" and BEFORE "Setup Java 17".
+
+      - name: Fix LiveKit microphone coroutine calls
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt")
+          if not path.exists():
+              raise SystemExit("ERROR: NativeVoiceService.kt not found.")
+
+          text = path.read_text(encoding="utf-8")
+
+          # Add coroutine imports.
+          package_match = re.search(r"^package .*?$", text, re.M)
+          if not package_match:
+              raise SystemExit("ERROR: Kotlin package declaration not found.")
+
+          imports = [
+              "import kotlinx.coroutines.CoroutineScope",
+              "import kotlinx.coroutines.Dispatchers",
+              "import kotlinx.coroutines.SupervisorJob",
+              "import kotlinx.coroutines.cancel",
+              "import kotlinx.coroutines.launch",
+          ]
+
+          missing = [x for x in imports if x not in text]
+          if missing:
+              text = (
+                  text[:package_match.end()]
+                  + "\n\n"
+                  + "\n".join(missing)
+                  + text[package_match.end():]
+              )
+
+          # Create a Service-lifetime coroutine scope.
+          if "private val nativeVoiceScope" not in text:
+              class_match = re.search(
+                  r"class\s+NativeVoiceService[^{]*\{",
+                  text
+              )
+              if not class_match:
+                  raise SystemExit(
+                      "ERROR: NativeVoiceService class declaration not found."
+                  )
+
+              field = (
+                  "\n"
+                  "    private val nativeVoiceScope = "
+                  "CoroutineScope(SupervisorJob() + Dispatchers.IO)\n"
+              )
+
+              pos = class_match.end()
+              text = text[:pos] + field + text[pos:]
+
+          # LiveKit 2.29.0 declares setMicrophoneEnabled() as suspend.
+          # Wrap each existing single-line call in the Service coroutine.
+          lines = text.splitlines()
+          out = []
+          wrapped = 0
+
+          for line in lines:
+              stripped = line.strip()
+
+              if (
+                  ".setMicrophoneEnabled(" in line
+                  and "nativeVoiceScope.launch" not in line
+                  and not stripped.startswith("//")
+                  and not stripped.startswith("*")
+              ):
+                  if line.count("(") != line.count(")"):
+                      raise SystemExit(
+                          "ERROR: multiline setMicrophoneEnabled call found."
+                      )
+
+                  indent = line[:len(line) - len(line.lstrip())]
+                  out.append(indent + "nativeVoiceScope.launch {")
+                  out.append("    " + line)
+                  out.append(indent + "}")
+                  wrapped += 1
+              else:
+                  out.append(line)
+
+          text = "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+          # Cancel the coroutine scope when the service is destroyed.
+          if "nativeVoiceScope.cancel()" not in text:
+              on_destroy = re.search(
+                  r"override\s+fun\s+onDestroy\s*\(\s*\)\s*\{",
+                  text
+              )
+
+              if on_destroy:
+                  pos = on_destroy.end()
+                  text = (
+                      text[:pos]
+                      + "\n        nativeVoiceScope.cancel()"
+                      + text[pos:]
+                  )
+              else:
+                  last = text.rfind("}")
+                  if last < 0:
+                      raise SystemExit(
+                          "ERROR: NativeVoiceService class closing brace not found."
+                      )
+
+                  text = (
+                      text[:last]
+                      + """
+    override fun onDestroy() {
+        nativeVoiceScope.cancel()
+        super.onDestroy()
+    }
+
+"""
+                      + text[last:]
+                  )
+
+          path.write_text(text, encoding="utf-8")
+
+          if wrapped == 0:
+              raise SystemExit(
+                  "ERROR: No setMicrophoneEnabled() call was found."
+              )
+
+          print(
+              f"SUCCESS: wrapped {wrapped} LiveKit microphone call(s) "
+              "inside nativeVoiceScope.launch."
+          )
+          PY
+
+          grep -n -C 3 \
+            "setMicrophoneEnabled\|nativeVoiceScope" \
+            app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt
