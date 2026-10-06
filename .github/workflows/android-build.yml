@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      V18_ZIP: RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-CORRECTED.zip
+      V18_ZIP: RAJ-Walkie-Talkie-V18-FCM-FIXED.zip
       PROJECT_DIR: android-v18
 
     steps:
