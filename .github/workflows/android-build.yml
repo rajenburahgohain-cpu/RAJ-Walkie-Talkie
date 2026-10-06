@@ -20,29 +20,16 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # 1. CHECKOUT
-      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2. VERIFY V18 ZIP
-      # ============================================================
       - name: Verify V18 ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "=============================================="
-          echo " Checking RAJ Walkie Talkie V18 ZIP"
-          echo "=============================================="
-
           if [ ! -f "$V18_ZIP" ]; then
-            echo "ERROR: V18 ZIP not found:"
-            echo "$V18_ZIP"
-            echo
-            echo "Available ZIP files:"
+            echo "ERROR: V18 ZIP not found: $V18_ZIP"
             find . -maxdepth 3 -type f -iname "*.zip" -print
             exit 1
           fi
@@ -50,9 +37,6 @@ jobs:
           echo "V18 ZIP found:"
           ls -lh "$V18_ZIP"
 
-      # ============================================================
-      # 3. EXTRACT V18 AND FIND ANDROID PROJECT
-      # ============================================================
       - name: Extract V18 Android project
         shell: bash
         run: |
@@ -65,8 +49,6 @@ jobs:
 
           unzip -q "$V18_ZIP" -d v18-extracted
 
-          echo "Searching for Android project..."
-
           PROJECT_SOURCE="$(
             find v18-extracted \
               -type f \
@@ -76,20 +58,12 @@ jobs:
           )"
 
           if [ -z "$PROJECT_SOURCE" ]; then
-            echo "ERROR: Android project not found inside V18 ZIP."
-            echo
-            echo "ZIP contents:"
+            echo "ERROR: Android project not found."
             find v18-extracted -maxdepth 7 -type f -print
             exit 1
           fi
 
-          echo "Android project found:"
-          echo "$PROJECT_SOURCE"
-
           cp -a "$PROJECT_SOURCE"/. "$PROJECT_DIR"/
-
-          echo
-          echo "Checking Android project..."
 
           test -f "$PROJECT_DIR/settings.gradle" || \
           test -f "$PROJECT_DIR/settings.gradle.kts"
@@ -99,28 +73,19 @@ jobs:
 
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
 
-          echo "V18 Android project verified successfully."
+          echo "V18 Android project verified."
 
-      # ============================================================
-      # 4. JAVA 17
-      # ============================================================
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      # ============================================================
-      # 5. GRADLE 8.11.1
-      # ============================================================
       - name: Setup Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
-      # ============================================================
-      # 6. ANDROID SDK
-      # ============================================================
       - name: Install Android SDK
         shell: bash
         run: |
@@ -134,11 +99,6 @@ jobs:
             "platforms;android-36" \
             "build-tools;35.0.0"
 
-          echo "Android SDK ready."
-
-      # ============================================================
-      # 7. GENERATE GRADLE WRAPPER
-      # ============================================================
       - name: Generate Gradle wrapper
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -146,23 +106,15 @@ jobs:
           set -euo pipefail
 
           gradle wrapper --gradle-version 8.11.1
-
           chmod +x gradlew
 
           ./gradlew --version
 
-      # ============================================================
-      # 8. VERIFY V18 CONFIGURATION
-      # ============================================================
       - name: Validate V18 configuration
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "=============================================="
-          echo " Validating V18 Production Live"
-          echo "=============================================="
 
           BUILD_FILE="app/build.gradle"
 
@@ -170,26 +122,11 @@ jobs:
             BUILD_FILE="app/build.gradle.kts"
           fi
 
-          echo "Build file:"
-          echo "$BUILD_FILE"
-
-          echo
-          echo "Version information:"
-          grep -nE \
-            "versionCode|versionName|compileSdk|targetSdk" \
-            "$BUILD_FILE" || true
-
-          echo
-          echo "Checking V18 version..."
-
           grep -qE "versionCode[[:space:]]+18" "$BUILD_FILE"
 
           grep -qE "versionName[[:space:]]+['\"]18\.0['\"]" "$BUILD_FILE"
 
-          echo "V18 version verified."
-
-          echo
-          echo "Checking Native Voice Service..."
+          grep -q "livekit-android" "$BUILD_FILE"
 
           test -f \
             app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt
@@ -197,54 +134,39 @@ jobs:
           test -f \
             app/src/main/java/com/raj/walkietalkie/PttWakeMessagingService.kt
 
-          echo "Native voice files found."
-
-          echo
-          echo "Checking Android Manifest..."
-
           grep -q "FOREGROUND_SERVICE_MICROPHONE" \
             app/src/main/AndroidManifest.xml
 
           grep -q "RECORD_AUDIO" \
             app/src/main/AndroidManifest.xml
 
-          echo "Microphone foreground-service configuration verified."
-
-          echo
-          echo "Checking LiveKit..."
-
-          grep -q "livekit-android" "$BUILD_FILE"
-
-          echo "LiveKit dependency found."
-
-          echo
           echo "V18 validation successful."
 
-      # ============================================================
-      # 9. OPTIONAL FIREBASE CONFIG
-      # ============================================================
-      - name: Configure Firebase
-        if: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
+      - name: Configure Firebase when supplied
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        shell: bash
         run: |
           set -euo pipefail
 
-          echo "Creating google-services.json..."
+          if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
 
-          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" \
-            | base64 --decode \
-            > app/google-services.json
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" \
+              | base64 --decode \
+              > app/google-services.json
 
-          test -s app/google-services.json
+            test -s app/google-services.json
 
-          echo "Firebase configuration created."
+            echo "Firebase configuration created."
 
-      # ============================================================
-      # 10. DEBUG BUILD
-      # ============================================================
+          else
+
+            echo "Firebase JSON not supplied."
+            echo "Continuing without Firebase JSON."
+
+          fi
+
       - name: Build V18 Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -257,15 +179,9 @@ jobs:
 
           test -s "$APK"
 
-          echo "=============================================="
-          echo " V18 DEBUG APK CREATED"
-          echo "=============================================="
-
+          echo "V18 Debug APK:"
           ls -lh "$APK"
 
-      # ============================================================
-      # 11. CHECK PLAY STORE SECRETS
-      # ============================================================
       - name: Check Play Store signing secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -275,8 +191,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "Checking signing secrets..."
 
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
             echo "ERROR: KEYSTORE_BASE64 is missing."
@@ -298,11 +212,8 @@ jobs:
             exit 1
           fi
 
-          echo "All Play Store signing secrets are available."
+          echo "Signing secrets are available."
 
-      # ============================================================
-      # 12. CREATE KEYSTORE
-      # ============================================================
       - name: Prepare Play Store keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -316,11 +227,8 @@ jobs:
 
           test -s "$PROJECT_DIR/release-upload.jks"
 
-          echo "Release keystore prepared."
+          echo "Keystore prepared."
 
-      # ============================================================
-      # 13. CONFIGURE RELEASE SIGNING
-      # ============================================================
       - name: Configure release signing
         working-directory: ${{ env.PROJECT_DIR }}
         env:
@@ -332,27 +240,13 @@ jobs:
           set -euo pipefail
 
           cat >> gradle.properties <<EOF
-
           RELEASE_STORE_FILE=$GITHUB_WORKSPACE/$PROJECT_DIR/release-upload.jks
           RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
           RELEASE_KEY_ALIAS=$KEY_ALIAS
           RELEASE_KEY_PASSWORD=$KEY_PASSWORD
           EOF
 
-          echo "Gradle signing properties configured."
-
-      # ============================================================
-      # 14. PATCH RELEASE SIGNING
-      # ============================================================
-      - name: Configure Android release signing
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ -f app/build.gradle ]; then
-
-            python3 - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
 
           path = Path("app/build.gradle")
@@ -369,7 +263,7 @@ jobs:
                       keyPassword project.property("RELEASE_KEY_PASSWORD")
                   }
               }
-          """
+              """
 
               text = text.replace(
                   "android {",
@@ -377,67 +271,44 @@ jobs:
                   1
               )
 
+          old = "release { minifyEnabled false }"
+
+          new = """release {
+              minifyEnabled false
+              signingConfig signingConfigs.playStoreRelease
+          }"""
+
           if "signingConfig signingConfigs.playStoreRelease" not in text:
 
-              marker = "buildTypes {"
-
-              if marker in text:
-                  text = text.replace(
-                      marker,
-                      marker + """
-              release {
-                  minifyEnabled false
-                  signingConfig signingConfigs.playStoreRelease
-              }
-          """,
-                      1
+              if old in text:
+                  text = text.replace(old, new, 1)
+              else:
+                  raise SystemExit(
+                      "Expected release buildType not found."
                   )
 
           path.write_text(text, encoding="utf-8")
 
-          print("Release signing configuration added.")
+          print("Release signing configured.")
           PY
 
-          else
-            echo "Kotlin DSL build detected."
-            echo "Existing V18 Kotlin signing configuration will be used."
-          fi
-
-      # ============================================================
-      # 15. RELEASE AAB
-      # ============================================================
       - name: Build V18 Release AAB
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "=============================================="
-          echo " Building V18 Production Release AAB"
-          echo "=============================================="
+          echo "Building V18 Production AAB..."
 
           ./gradlew bundleRelease --stacktrace
 
           AAB="app/build/outputs/bundle/release/app-release.aab"
 
-          if [ ! -s "$AAB" ]; then
-            echo "ERROR: Release AAB was not created."
+          test -s "$AAB"
 
-            find app/build/outputs \
-              -type f \
-              -maxdepth 6 \
-              -print || true
-
-            exit 1
-          fi
-
-          echo
-          echo "V18 Production AAB:"
+          echo "V18 Production AAB created:"
           ls -lh "$AAB"
 
-      # ============================================================
-      # 16. VERIFY AAB SIGNATURE
-      # ============================================================
       - name: Verify V18 AAB
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -445,8 +316,6 @@ jobs:
           set -euo pipefail
 
           AAB="app/build/outputs/bundle/release/app-release.aab"
-
-          echo "Verifying signed AAB..."
 
           jarsigner \
             -verify \
@@ -457,12 +326,8 @@ jobs:
 
           tail -25 /tmp/v18-jarsigner.txt
 
-          echo
           echo "AAB verification completed."
 
-      # ============================================================
-      # 17. UPLOAD V18 AAB
-      # ============================================================
       - name: Upload V18 Production AAB
         uses: actions/upload-artifact@v4
         with:
@@ -471,9 +336,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # ============================================================
-      # 18. UPLOAD V18 DEBUG APK
-      # ============================================================
       - name: Upload V18 Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -482,26 +344,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # ============================================================
-      # 19. FINAL SUCCESS
-      # ============================================================
       - name: Final V18 Build Verification
         shell: bash
         run: |
           set -euo pipefail
 
-          echo
           echo "================================================"
           echo " RAJ WALKIE TALKIE V18 BUILD SUCCESSFUL"
           echo "================================================"
-          echo
           echo "Version Code : 18"
           echo "Version Name : 18.0"
-          echo
-          echo "Production AAB:"
-          echo "RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-AAB"
-          echo
-          echo "Debug APK:"
-          echo "RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-DEBUG-APK"
-          echo
+          echo "AAB Artifact : RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-AAB"
           echo "================================================"
