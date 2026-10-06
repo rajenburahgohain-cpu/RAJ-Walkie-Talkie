@@ -3,8 +3,7 @@ name: RAJ Walkie Talkie V18 Production Live
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -20,93 +19,244 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # 1. CHECKOUT
-      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2. VERIFY V18 ZIP
-      # ============================================================
       - name: Verify V18 ZIP
-        shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -f "$V18_ZIP" ]; then
-            echo "ERROR: V18 ZIP not found: $V18_ZIP"
-            echo "Available ZIP files:"
-            find . -maxdepth 3 -type f -iname "*.zip" -print
+          test -f "$V18_ZIP" || {
+            echo "ERROR: $V18_ZIP not found"
+            find . -maxdepth 3 -type f -iname '*.zip' -print
             exit 1
-          fi
+          }
 
-          echo "V18 ZIP found:"
           ls -lh "$V18_ZIP"
 
-      # ============================================================
-      # 3. EXTRACT ANDROID PROJECT
-      # ============================================================
       - name: Extract V18 Android project
-        shell: bash
         run: |
           set -euo pipefail
 
           rm -rf v18-extracted "$PROJECT_DIR"
-
-          mkdir -p v18-extracted
-          mkdir -p "$PROJECT_DIR"
+          mkdir -p v18-extracted "$PROJECT_DIR"
 
           unzip -q "$V18_ZIP" -d v18-extracted
 
-          PROJECT_SOURCE="$(
-            find v18-extracted \
-              -type f \
-              \( -name settings.gradle -o -name settings.gradle.kts \) \
-              -print -quit |
-              xargs -r -n1 dirname
-          )"
+          PROJECT_SOURCE="$(find v18-extracted \
+            -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit | xargs -r -n1 dirname)"
 
-          if [ -z "$PROJECT_SOURCE" ]; then
-            echo "ERROR: Android project not found."
+          test -n "$PROJECT_SOURCE" || {
+            echo "ERROR: Android project not found"
             find v18-extracted -maxdepth 7 -type f -print
             exit 1
-          fi
+          }
 
           cp -a "$PROJECT_SOURCE"/. "$PROJECT_DIR"/
 
-          test -f "$PROJECT_DIR/settings.gradle" || \
-          test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
 
           test -f "$PROJECT_DIR/app/build.gradle" || \
           test -f "$PROJECT_DIR/app/build.gradle.kts"
 
-          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+      - name: Fix LiveKit microphone coroutine calls
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          echo "V18 Android project verified."
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-      # ============================================================
-      # 4. JAVA 17
-      # ============================================================
+          p = Path(
+              'app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt'
+          )
+
+          if not p.exists():
+              raise SystemExit(
+                  'ERROR: NativeVoiceService.kt not found'
+              )
+
+          s = p.read_text(encoding='utf-8')
+
+          pkg = re.search(
+              r'^package .*?$',
+              s,
+              re.M
+          )
+
+          if not pkg:
+              raise SystemExit(
+                  'ERROR: package declaration not found'
+              )
+
+          imports = [
+              'import kotlinx.coroutines.CoroutineScope',
+              'import kotlinx.coroutines.Dispatchers',
+              'import kotlinx.coroutines.SupervisorJob',
+              'import kotlinx.coroutines.cancel',
+              'import kotlinx.coroutines.launch',
+          ]
+
+          missing = [
+              x for x in imports
+              if x not in s
+          ]
+
+          if missing:
+              s = (
+                  s[:pkg.end()]
+                  + '\n\n'
+                  + '\n'.join(missing)
+                  + s[pkg.end():]
+              )
+
+          if 'private val nativeVoiceScope' not in s:
+
+              m = re.search(
+                  r'class\s+NativeVoiceService[^{]*\{',
+                  s
+              )
+
+              if not m:
+                  raise SystemExit(
+                      'ERROR: NativeVoiceService class not found'
+                  )
+
+              field = (
+                  '\n'
+                  '    private val nativeVoiceScope = '
+                  'CoroutineScope('
+                  'SupervisorJob() + '
+                  'Dispatchers.Main.immediate'
+                  ')\n'
+              )
+
+              s = (
+                  s[:m.end()]
+                  + field
+                  + s[m.end():]
+              )
+
+          lines = s.splitlines()
+
+          out = []
+          wrapped = 0
+
+          for line in lines:
+
+              st = line.strip()
+
+              if (
+                  '.setMicrophoneEnabled(' in line
+                  and 'nativeVoiceScope.launch' not in line
+                  and not st.startswith('//')
+                  and not st.startswith('*')
+              ):
+
+                  if line.count('(') != line.count(')'):
+                      raise SystemExit(
+                          'ERROR: multiline '
+                          'setMicrophoneEnabled() call found'
+                      )
+
+                  ind = line[
+                      :len(line) - len(line.lstrip())
+                  ]
+
+                  out.append(
+                      ind + 'nativeVoiceScope.launch {'
+                  )
+
+                  out.append(
+                      '    ' + line
+                  )
+
+                  out.append(
+                      ind + '}'
+                  )
+
+                  wrapped += 1
+
+              else:
+                  out.append(line)
+
+          s = '\n'.join(out)
+
+          if s.endswith('\n'):
+              s += '\n'
+
+          if 'nativeVoiceScope.cancel()' not in s:
+
+              m = re.search(
+                  r'override\s+fun\s+onDestroy\s*\(\s*\)\s*\{',
+                  s
+              )
+
+              if m:
+
+                  s = (
+                      s[:m.end()]
+                      + '\n'
+                      '        nativeVoiceScope.cancel()'
+                      + s[m.end():]
+                  )
+
+              else:
+
+                  i = s.rfind('}')
+
+                  if i < 0:
+                      raise SystemExit(
+                          'ERROR: class closing brace not found'
+                      )
+
+                  s = (
+                      s[:i]
+                      + '\n'
+                      '    override fun onDestroy() {\n'
+                      '        nativeVoiceScope.cancel()\n'
+                      '        super.onDestroy()\n'
+                      '    }\n'
+                      + s[i:]
+                  )
+
+          p.write_text(
+              s,
+              encoding='utf-8'
+          )
+
+          if wrapped == 0:
+              raise SystemExit(
+                  'ERROR: no direct '
+                  'setMicrophoneEnabled() call found'
+              )
+
+          print(
+              f'SUCCESS: wrapped '
+              f'{wrapped} microphone call(s)'
+          )
+          PY
+
+          grep -n -C 3 \
+            'setMicrophoneEnabled\|nativeVoiceScope' \
+            app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt
+
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      # ============================================================
-      # 5. GRADLE 8.11.1
-      # ============================================================
       - name: Setup Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.11.1"
+          gradle-version: '8.11.1'
 
-      # ============================================================
-      # 6. ANDROID SDK
-      # ============================================================
       - name: Install Android SDK
-        shell: bash
         run: |
           set -euo pipefail
 
@@ -115,15 +265,11 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
 
           "$SDKMANAGER" \
-            "platforms;android-36" \
-            "build-tools;35.0.0"
+            'platforms;android-36' \
+            'build-tools;35.0.0'
 
-      # ============================================================
-      # 7. GRADLE WRAPPER
-      # ============================================================
       - name: Generate Gradle wrapper
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         run: |
           set -euo pipefail
 
@@ -133,122 +279,94 @@ jobs:
 
           ./gradlew --version
 
-      # ============================================================
-      # 8. VALIDATE V18
-      # ============================================================
       - name: Validate V18 configuration
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         run: |
           set -euo pipefail
 
-          BUILD_FILE="app/build.gradle"
+          BUILD_FILE=app/build.gradle
 
-          if [ ! -f "$BUILD_FILE" ]; then
-            BUILD_FILE="app/build.gradle.kts"
-          fi
+          test -f "$BUILD_FILE" || \
+          BUILD_FILE=app/build.gradle.kts
 
-          echo "Checking version..."
+          grep -qE \
+            'versionCode[[:space:]]+18' \
+            "$BUILD_FILE"
 
-          grep -qE "versionCode[[:space:]]+18" "$BUILD_FILE"
+          grep -qE \
+            'versionName[[:space:]]+[\x27\"]18\.0[\x27\"]' \
+            "$BUILD_FILE"
 
-          grep -qE "versionName[[:space:]]+['\"]18\.0['\"]" "$BUILD_FILE"
-
-          echo "Checking LiveKit..."
-
-          grep -q "livekit-android" "$BUILD_FILE"
-
-          echo "Checking Native Voice Service..."
+          grep -q \
+            'livekit-android' \
+            "$BUILD_FILE"
 
           test -f \
             app/src/main/java/com/raj/walkietalkie/NativeVoiceService.kt
 
-          echo "Checking FCM service..."
-
           test -f \
             app/src/main/java/com/raj/walkietalkie/PttWakeMessagingService.kt
 
-          echo "Checking microphone foreground service..."
-
-          grep -q "FOREGROUND_SERVICE_MICROPHONE" \
+          grep -q \
+            'FOREGROUND_SERVICE_MICROPHONE' \
             app/src/main/AndroidManifest.xml
 
-          echo "Checking microphone permission..."
-
-          grep -q "RECORD_AUDIO" \
+          grep -q \
+            'RECORD_AUDIO' \
             app/src/main/AndroidManifest.xml
 
-          echo "V18 validation successful."
-
-      # ============================================================
-      # 9. FIX JAVA/KOTLIN JVM TARGET
-      # IMPORTANT:
-      # Previous error:
-      # Java = 1.8
-      # Kotlin = 17
-      #
-      # This step forces BOTH to JVM 17.
-      # ============================================================
       - name: Fix Java Kotlin JVM target
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 - <<'PY'
+          BUILD_FILE=app/build.gradle
+
+          test -f "$BUILD_FILE" || \
+          BUILD_FILE=app/build.gradle.kts
+
+          python3 - "$BUILD_FILE" <<'PY'
           from pathlib import Path
+          import sys
 
-          path = Path("app/build.gradle")
+          p = Path(sys.argv[1])
 
-          if not path.exists():
-              raise SystemExit(
-                  "ERROR: app/build.gradle not found."
-              )
-
-          text = path.read_text(encoding="utf-8")
-
-          # --------------------------------------------------------
-          # Remove old Java compatibility blocks if present
-          # --------------------------------------------------------
-          text = text.replace(
-              "sourceCompatibility JavaVersion.VERSION_1_8",
-              "sourceCompatibility JavaVersion.VERSION_17"
+          s = p.read_text(
+              encoding='utf-8'
           )
 
-          text = text.replace(
-              "targetCompatibility JavaVersion.VERSION_1_8",
-              "targetCompatibility JavaVersion.VERSION_17"
-          )
+          replacements = {
+              'sourceCompatibility JavaVersion.VERSION_1_8':
+                  'sourceCompatibility JavaVersion.VERSION_17',
 
-          text = text.replace(
-              "sourceCompatibility = JavaVersion.VERSION_1_8",
-              "sourceCompatibility = JavaVersion.VERSION_17"
-          )
+              'targetCompatibility JavaVersion.VERSION_1_8':
+                  'targetCompatibility JavaVersion.VERSION_17',
 
-          text = text.replace(
-              "targetCompatibility = JavaVersion.VERSION_1_8",
-              "targetCompatibility = JavaVersion.VERSION_17"
-          )
+              'sourceCompatibility = JavaVersion.VERSION_1_8':
+                  'sourceCompatibility = JavaVersion.VERSION_17',
 
-          # --------------------------------------------------------
-          # Replace old Kotlin JVM target
-          # --------------------------------------------------------
-          text = text.replace(
-              "jvmTarget = '1.8'",
-              "jvmTarget = '17'"
-          )
+              'targetCompatibility = JavaVersion.VERSION_1_8':
+                  'targetCompatibility = JavaVersion.VERSION_17',
 
-          text = text.replace(
-              'jvmTarget = "1.8"',
-              'jvmTarget = "17"'
-          )
+              "jvmTarget = '1.8'":
+                  "jvmTarget = '17'",
 
-          # --------------------------------------------------------
-          # Add Java/Kotlin compatibility if missing
-          # --------------------------------------------------------
-          if "sourceCompatibility JavaVersion.VERSION_17" not in text:
+              'jvmTarget = "1.8"':
+                  'jvmTarget = "17"',
+          }
 
-              compatibility = """
+          for a, b in replacements.items():
+              s = s.replace(a, b)
+
+          if (
+              'sourceCompatibility JavaVersion.VERSION_17'
+              not in s
+          ):
+
+              s = s.replace(
+                  'android {',
+                  '''android {
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
@@ -257,302 +375,245 @@ jobs:
               kotlinOptions {
                   jvmTarget = '17'
               }
-              """
-
-              text = text.replace(
-                  "android {",
-                  "android {" + compatibility,
+          ''',
                   1
               )
 
-          # --------------------------------------------------------
-          # Make sure Kotlin target is 17
-          # --------------------------------------------------------
-          if "jvmTarget = '17'" not in text:
+          elif (
+              "jvmTarget = '17'" not in s
+              and 'jvmTarget = "17"' not in s
+          ):
 
-              if "kotlinOptions {" in text:
+              if 'kotlinOptions {' in s:
 
-                  text = text.replace(
-                      "kotlinOptions {",
-                      "kotlinOptions {\n        jvmTarget = '17'",
+                  s = s.replace(
+                      'kotlinOptions {',
+                      "kotlinOptions {\n"
+                      "        jvmTarget = '17'",
                       1
                   )
 
               else:
 
-                  compatibility = """
+                  s = s.replace(
+                      'android {',
+                      '''android {
               kotlinOptions {
                   jvmTarget = '17'
               }
-              """
-
-                  text = text.replace(
-                      "android {",
-                      "android {" + compatibility,
+          ''',
                       1
                   )
 
-          path.write_text(text, encoding="utf-8")
-
-          print("Java JVM target = 17")
-          print("Kotlin JVM target = 17")
+          p.write_text(
+              s,
+              encoding='utf-8'
+          )
           PY
 
-          echo "================================================"
-          echo "JVM TARGET CONFIGURATION"
-          echo "================================================"
-
           grep -n \
-            "sourceCompatibility\|targetCompatibility\|jvmTarget" \
-            app/build.gradle || true
+            'sourceCompatibility\|targetCompatibility\|jvmTarget' \
+            "$BUILD_FILE" || true
 
-          echo "================================================"
-
-      # ============================================================
-      # 10. FIREBASE
-      # ============================================================
       - name: Configure Firebase when supplied
         working-directory: ${{ env.PROJECT_DIR }}
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
-        shell: bash
         run: |
           set -euo pipefail
 
           if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
 
-            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" \
+            printf '%s' \
+              "$GOOGLE_SERVICES_JSON_BASE64" \
               | base64 --decode \
               > app/google-services.json
 
-            test -s app/google-services.json
-
-            echo "Firebase configuration created."
+            test -s \
+              app/google-services.json
 
           else
 
-            echo "Firebase JSON not supplied."
-            echo "Continuing without Firebase JSON."
+            echo \
+              'Firebase JSON not supplied; continuing.'
 
           fi
 
-      # ============================================================
-      # 11. DEBUG BUILD
-      # ============================================================
       - name: Build V18 Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         run: |
           set -euo pipefail
 
-          echo "================================================"
-          echo "BUILDING V18 DEBUG APK"
-          echo "================================================"
+          ./gradlew \
+            clean \
+            assembleDebug \
+            --stacktrace
 
-          ./gradlew clean assembleDebug --stacktrace
+          test -s \
+            app/build/outputs/apk/debug/app-debug.apk
 
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          ls -lh \
+            app/build/outputs/apk/debug/app-debug.apk
 
-          test -s "$APK"
-
-          echo "V18 Debug APK created:"
-          ls -lh "$APK"
-
-      # ============================================================
-      # 12. CHECK SIGNING SECRETS
-      # ============================================================
       - name: Check Play Store signing secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "ERROR: KEYSTORE_BASE64 is missing."
+          test -n "${KEYSTORE_BASE64:-}" || {
+            echo 'ERROR: KEYSTORE_BASE64 missing'
             exit 1
-          fi
+          }
 
-          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
-            echo "ERROR: KEYSTORE_PASSWORD is missing."
+          test -n "${KEYSTORE_PASSWORD:-}" || {
+            echo 'ERROR: KEYSTORE_PASSWORD missing'
             exit 1
-          fi
+          }
 
-          if [ -z "${KEY_ALIAS:-}" ]; then
-            echo "ERROR: KEY_ALIAS is missing."
+          test -n "${KEY_ALIAS:-}" || {
+            echo 'ERROR: KEY_ALIAS missing'
             exit 1
-          fi
+          }
 
-          if [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "ERROR: KEY_PASSWORD is missing."
+          test -n "${KEY_PASSWORD:-}" || {
+            echo 'ERROR: KEY_PASSWORD missing'
             exit 1
-          fi
+          }
 
-          echo "Signing secrets are available."
-
-      # ============================================================
-      # 13. PREPARE KEYSTORE
-      # ============================================================
       - name: Prepare Play Store keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        shell: bash
         run: |
           set -euo pipefail
 
-          printf '%s' "$KEYSTORE_BASE64" \
+          printf '%s' \
+            "$KEYSTORE_BASE64" \
             | base64 --decode \
             > "$PROJECT_DIR/release-upload.jks"
 
-          test -s "$PROJECT_DIR/release-upload.jks"
+          test -s \
+            "$PROJECT_DIR/release-upload.jks"
 
-          echo "Keystore prepared."
-
-      # ============================================================
-      # 14. CONFIGURE RELEASE SIGNING
-      # ============================================================
       - name: Configure release signing
         working-directory: ${{ env.PROJECT_DIR }}
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        shell: bash
         run: |
           set -euo pipefail
 
-          cat >> gradle.properties <<EOF
+          cat >> gradle.properties <<EOF2
           RELEASE_STORE_FILE=$GITHUB_WORKSPACE/$PROJECT_DIR/release-upload.jks
           RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
           RELEASE_KEY_ALIAS=$KEY_ALIAS
           RELEASE_KEY_PASSWORD=$KEY_PASSWORD
-          EOF
+          EOF2
 
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("app/build.gradle")
-          text = path.read_text(encoding="utf-8")
+          p = Path(
+              'app/build.gradle'
+          )
 
-          # --------------------------------------------------------
-          # Add signing config
-          # --------------------------------------------------------
-          if "playStoreRelease" not in text:
+          s = p.read_text(
+              encoding='utf-8'
+          )
 
-              signing = """
+          if 'playStoreRelease' not in s:
+
+              s = s.replace(
+                  'android {',
+                  '''android {
               signingConfigs {
                   playStoreRelease {
-                      storeFile file(project.property("RELEASE_STORE_FILE"))
-                      storePassword project.property("RELEASE_STORE_PASSWORD")
-                      keyAlias project.property("RELEASE_KEY_ALIAS")
-                      keyPassword project.property("RELEASE_KEY_PASSWORD")
+                      storeFile file(
+                          project.property(
+                              "RELEASE_STORE_FILE"
+                          )
+                      )
+                      storePassword project.property(
+                          "RELEASE_STORE_PASSWORD"
+                      )
+                      keyAlias project.property(
+                          "RELEASE_KEY_ALIAS"
+                      )
+                      keyPassword project.property(
+                          "RELEASE_KEY_PASSWORD"
+                      )
                   }
               }
-              """
-
-              text = text.replace(
-                  "android {",
-                  "android {" + signing,
+          ''',
                   1
               )
 
-          # --------------------------------------------------------
-          # Configure release signing
-          # --------------------------------------------------------
-          if "signingConfig signingConfigs.playStoreRelease" not in text:
+          if (
+              'signingConfig signingConfigs.playStoreRelease'
+              not in s
+          ):
 
-              old = "release { minifyEnabled false }"
+              i = s.find(
+                  'release {'
+              )
 
-              new = """release {
-              minifyEnabled false
-              signingConfig signingConfigs.playStoreRelease
-          }"""
-
-              if old in text:
-
-                  text = text.replace(
-                      old,
-                      new,
-                      1
-                  )
-
-              elif "release {" in text:
-
-                  marker = "release {"
-
-                  text = text.replace(
-                      marker,
-                      """release {
-              minifyEnabled false
-              signingConfig signingConfigs.playStoreRelease
-          """,
-                      1
-                  )
-
-              else:
-
+              if i < 0:
                   raise SystemExit(
-                      "ERROR: release buildType not found."
+                      'ERROR: release buildType not found'
                   )
 
-          path.write_text(
-              text,
-              encoding="utf-8"
-          )
+              i += len(
+                  'release {'
+              )
 
-          print("Release signing configured.")
+              s = (
+                  s[:i]
+                  + '''
+                  minifyEnabled false
+                  signingConfig signingConfigs.playStoreRelease'''
+                  + s[i:]
+              )
+
+          p.write_text(
+              s,
+              encoding='utf-8'
+          )
           PY
 
-      # ============================================================
-      # 15. RELEASE AAB
-      # ============================================================
       - name: Build V18 Release AAB
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         run: |
           set -euo pipefail
 
-          echo "================================================"
-          echo "BUILDING V18 PRODUCTION AAB"
-          echo "================================================"
+          ./gradlew \
+            bundleRelease \
+            --stacktrace
 
-          ./gradlew bundleRelease --stacktrace
+          test -s \
+            app/build/outputs/bundle/release/app-release.aab
 
-          AAB="app/build/outputs/bundle/release/app-release.aab"
+          ls -lh \
+            app/build/outputs/bundle/release/app-release.aab
 
-          test -s "$AAB"
-
-          echo "V18 Production AAB created:"
-          ls -lh "$AAB"
-
-      # ============================================================
-      # 16. VERIFY AAB
-      # ============================================================
       - name: Verify V18 AAB
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         run: |
           set -euo pipefail
-
-          AAB="app/build/outputs/bundle/release/app-release.aab"
 
           jarsigner \
             -verify \
             -verbose \
             -certs \
-            "$AAB" \
+            app/build/outputs/bundle/release/app-release.aab \
             > /tmp/v18-jarsigner.txt
 
-          tail -25 /tmp/v18-jarsigner.txt
+          tail -25 \
+            /tmp/v18-jarsigner.txt
 
-          echo "AAB verification completed."
-
-      # ============================================================
-      # 17. UPLOAD PRODUCTION AAB
-      # ============================================================
       - name: Upload V18 Production AAB
         uses: actions/upload-artifact@v4
         with:
@@ -561,9 +622,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # ============================================================
-      # 18. UPLOAD DEBUG APK
-      # ============================================================
       - name: Upload V18 Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -572,23 +630,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # ============================================================
-      # 19. FINAL VERIFICATION
-      # ============================================================
       - name: Final V18 Build Verification
-        shell: bash
         run: |
-          set -euo pipefail
-
-          echo "================================================"
-          echo " RAJ WALKIE TALKIE V18 BUILD SUCCESSFUL"
-          echo "================================================"
-          echo "Version Code : 18"
-          echo "Version Name : 18.0"
-          echo ""
-          echo "AAB Artifact:"
-          echo "RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-AAB"
-          echo ""
-          echo "Debug Artifact:"
-          echo "RAJ-Walkie-Talkie-V18-PRODUCTION-LIVE-DEBUG-APK"
-          echo "================================================"
+          echo '================================================'
+          echo 'RAJ WALKIE TALKIE V18 BUILD SUCCESSFUL'
+          echo 'Version Code : 18'
+          echo 'Version Name : 18.0'
+          echo '================================================'
